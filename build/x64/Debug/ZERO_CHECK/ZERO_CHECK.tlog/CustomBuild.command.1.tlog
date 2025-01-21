@@ -1,0 +1,10 @@
+^C:\USERS\MICHAEL\CODING\C++\CUSTOMNEURALNETWORK\BUILD\CMAKEFILES\DAF928364177301F543E8E83C7C9AD99\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/Michael/Coding/C++/CustomNeuralNetwork -BC:/Users/Michael/Coding/C++/CustomNeuralNetwork/build --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/Michael/Coding/C++/CustomNeuralNetwork/build/CustomNeuralNetwork.sln
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd
