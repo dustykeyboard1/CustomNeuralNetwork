@@ -24,6 +24,9 @@ set(SOURCES
 # Add executable target
 add_executable(CustomNeuralNetwork ${SOURCES})
 
+add_executable(MatrixOpsTests tests/test_MatrixOps.cpp src/MatrixOps.cu)
+target_link_libraries(MatrixOpsTests ${CUDA_LIBRARIES})
+
 # Ensure consistent runtime libraries
 if(MSVC)
     # Debug configuration

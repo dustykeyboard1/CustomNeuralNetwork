@@ -17,15 +17,16 @@ int main() {
         15, 16, 17, 18
     };
 
-    float C[8] = {0};
+    float C[12] = {0};
 
     // MatrixOps::add(A,B,C, rows, cols);
-    MatrixOps::multiply(A,B,C, rowsA, colsA, rowsB, colsB);
+    // MatrixOps::multiply(A,B,C, rowsA, colsA, rowsB, colsB);
+    MatrixOps::transpose(B, C, rowsB, colsB);
 
-    std::cout << "Matrix Multiplication Result:\n";
-    for (int i = 0; i < rowsA; ++i) {
-        for(int j = 0; j < colsB; ++j) {
-            std::cout << C[i * colsB + j] << " ";
+    std::cout << "Matrix Transpose Result:\n";
+    for (int i = 0; i < colsB; ++i) {
+        for(int j = 0; j < rowsB; ++j) {
+            std::cout << C[i * rowsB + j] << " ";
         }
         std::cout << "\n";
     }
