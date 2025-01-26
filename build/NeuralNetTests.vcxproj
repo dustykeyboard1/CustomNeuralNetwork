@@ -413,6 +413,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <CudaCompile Include="..\src\NeuralNet.cu" />
     <CudaCompile Include="..\src\Layer.cu" />
     <CudaCompile Include="..\src\MatrixOps.cu" />
+    <CudaCompile Include="..\src\LossOps.cu" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>

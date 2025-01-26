@@ -166,8 +166,6 @@ __global__ void SumAcrossRowsKernel(const float* input, float* output, int rows,
         }
         output[col] = sum;
 
-        // Debug: Print output for each thread
-        printf("Thread %d: output[%d] = %f\n", col, col, sum);
     }
 }
 
@@ -181,16 +179,11 @@ __global__ void initializeCurandStates(curandState* states, unsigned long seed) 
 __global__ void AddBiasKernel(const float* output, const float* bias, float* result, int batchSize, int outputSize) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    // Calculate row and column based on idx
-    int row = idx / outputSize;
-    int col = idx % outputSize;
-
-    if (row < batchSize && col < outputSize) {
+    if (idx < batchSize * outputSize) {
+        int col = idx % outputSize; // Column index
         result[idx] = output[idx] + bias[col];
     }
 }
-
-
 
 void add(const float* A, const float* B, float* C, int rows, int cols) {
     size_t size = rows * cols * sizeof(float);
@@ -244,8 +237,19 @@ void subtract(const float* A, const float* B, float* C, int rows, int cols) {
 }
 
 void multiply(const float* A, const float* B, float* C, int rowsA, int colsA, int rowsB, int colsB) {
-    size_t sizeA = colsA * rowsA * sizeof(float);
-    size_t sizeB = colsB * rowsB * sizeof(float);
+    if (colsA != rowsB) {
+        std::cerr << "[ERROR] Matrix dimensions do not align for multiplication.\n";
+        return;
+    }
+    if (A == nullptr) {
+        std::cerr << "[ERROR] Host pointer A is null.\n";
+        return;
+    }
+
+    size_t sizeA = rowsA * colsA * sizeof(float);
+    std::cout << "[DEBUG] Calculated sizeA: " << sizeA << " bytes\n";
+
+    size_t sizeB = rowsB * colsB * sizeof(float);
     size_t sizeC = rowsA * colsB * sizeof(float);
 
 
@@ -255,9 +259,47 @@ void multiply(const float* A, const float* B, float* C, int rowsA, int colsA, in
     cudaMalloc(&d_B, sizeB);
     cudaMalloc(&d_C, sizeC);
 
-    cudaMemcpy(d_A, A, sizeA, cudaMemcpyHostToDevice);
+    cudaError_t allocErr = cudaMalloc(&d_A, sizeA);
+    if (allocErr != cudaSuccess) {
+        std::cerr << "[ERROR] cudaMalloc failed for d_A: " << cudaGetErrorString(allocErr) << "\n";
+        return;
+    }
+    std::cout << "[DEBUG] Verifying device-side Matrix A after cudaMemcpy (first 10 values): ";
+    float* hostAAfterMemcpy = new float[rowsA * colsA];
+    cudaMemcpy(hostAAfterMemcpy, d_A, sizeA, cudaMemcpyDeviceToHost);
+    cudaDeviceSynchronize();
+    for (int i = 0; i < 10 && i < rowsA * colsA; ++i) {
+        std::cout << hostAAfterMemcpy[i] << " ";
+    }
+    std::cout << "\n";
+    delete[] hostAAfterMemcpy;
+
+
     cudaMemcpy(d_B, B, sizeB, cudaMemcpyHostToDevice);
     cudaMemcpy(d_C, C, sizeC, cudaMemcpyHostToDevice);
+
+
+    // Debug: Inspect A
+    // float* hostA = new float[rowsA * colsA];
+    // cudaMemcpy(hostA, d_A, sizeA, cudaMemcpyDeviceToHost);
+    // std::cout << "[DEBUG] MAtrixOps: Matrix A (first 10 values): ";
+    // for (int i = 0; i < 10 && i < rowsA * colsA; ++i) {
+    //     std::cout << hostA[i] << " ";
+    // }
+    // std::cout << "\n";
+
+    // Debug: Inspect B
+    float* hostB = new float[rowsB * colsB];
+    cudaMemcpy(hostB, d_B, sizeB, cudaMemcpyDeviceToHost);
+    std::cout << "[DEBUG] MAtrixOps: Matrix B (first 10 values): ";
+    for (int i = 0; i < 10 && i < rowsB * colsB; ++i) {
+        std::cout << hostB[i] << " ";
+    }
+    std::cout << "\n";
+
+    // Clean up debug arrays
+    delete[] hostA;
+    delete[] hostB;
 
     dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((colsB + 15) / 16, (rowsA + 15) / 16);
@@ -265,7 +307,9 @@ void multiply(const float* A, const float* B, float* C, int rowsA, int colsA, in
     MultiplicationKernel<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, rowsA, colsA, rowsB,
                                                                 colsB);
 
+    cudaDeviceSynchronize();
     cudaMemcpy(C, d_C, sizeC, cudaMemcpyDeviceToHost); 
+
 
     cudaFree(d_A);
     cudaFree(d_B);
@@ -459,17 +503,13 @@ void initializeWeights(float* weights, int rows, int cols, const std::string& in
     size_t size = rows * cols * sizeof(float);
     float *d_weights;
 
-    // Allocate GPU memory for weights
     cudaMalloc(&d_weights, size);
 
-    // No need to copy from host weights (they're being initialized directly on GPU)
     cudaMemset(d_weights, 0, size);
 
-    // Define grid and block sizes
     dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
 
-    // Convert the initialization type to an integer code
     int initTypeCode = 0; 
     if (initType == "xavier") {
         initTypeCode = 1;
@@ -477,21 +517,17 @@ void initializeWeights(float* weights, int rows, int cols, const std::string& in
         initTypeCode = 2;
     }
 
-    // Allocate memory for cuRAND states
     int totalSize = rows * cols;
     curandState* d_states;
     cudaMalloc(&d_states, totalSize * sizeof(curandState));
 
-    // Initialize cuRAND states
     int blockSize = 256;
     int gridSize = (totalSize + blockSize - 1) / blockSize;
     initializeCurandStates<<<gridSize, blockSize>>>(d_states, time(0));
 
-    // Launch the kernel to initialize weights
     initializeWeightsKernel<<<blocksPerGrid, threadsPerBlock>>>(d_weights, rows, cols, d_states, initTypeCode);
     cudaDeviceSynchronize();
 
-    // Copy weights back to host
     cudaMemcpy(weights, d_weights, size, cudaMemcpyDeviceToHost);
 
     // Free memory
@@ -500,87 +536,59 @@ void initializeWeights(float* weights, int rows, int cols, const std::string& in
 }
 
 
-void addBias(const float* output, const float* bias, float* result, int batchSize, int outputSize) {
-        size_t totalElements = batchSize * outputSize;
+void MatrixOps::addBias(const float* output, const float* bias, float* result, int batchSize, int outputSize) {
+    size_t totalElements = batchSize * outputSize * sizeof(float);
+    size_t biasSize = outputSize * sizeof(float);
 
-        if (result == nullptr) {
-            cudaMalloc(&result, totalElements * sizeof(float));
-        }
+    float *d_output = nullptr, *d_bias = nullptr, *d_result = nullptr;
 
-        int blockSize = 256;
-        int gridSize = (totalElements + blockSize - 1) / blockSize;
+    // Allocate GPU memory
+    cudaMalloc(&d_output, totalElements);
+    cudaMalloc(&d_bias, biasSize);
+    cudaMalloc(&d_result, totalElements);
 
-        AddBiasKernel<<<gridSize, blockSize>>>(output, bias, result, batchSize, outputSize);
+    cudaMemcpy(d_output, output, totalElements, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_bias, bias, biasSize, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_result, result, totalElements, cudaMemcpyHostToDevice);
 
-        cudaDeviceSynchronize();
+    int threadsPerBlock = 256;
+    int blocksPerGrid = (batchSize * outputSize + threadsPerBlock - 1) / threadsPerBlock;
+
+    AddBiasKernel<<<blocksPerGrid, threadsPerBlock>>>(d_output, d_bias, d_result, batchSize, outputSize);
+    cudaDeviceSynchronize();
+
+    cudaMemcpy(result, d_result, totalElements, cudaMemcpyDeviceToHost);
+
+    cudaFree(d_output);
+    cudaFree(d_bias);
+    cudaFree(d_result);
 }
 
+
 void MatrixOps::sumAcrossRows(const float* input, float* output, int rows, int cols) {
+    float *d_input = nullptr, *d_output = nullptr;
     size_t inputSize = rows * cols * sizeof(float);
     size_t outputSize = cols * sizeof(float);
 
-    float *d_input, *d_output;
+    cudaMalloc(&d_input, inputSize);
+    cudaMalloc(&d_output, outputSize);
 
-    // Debug: Log sizes
-    std::cout << "Allocating GPU memory: Input size = " << inputSize 
-              << ", Output size = " << outputSize << "\n";
+    cudaMemcpy(d_input, input, inputSize, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_output, output, outputSize, cudaMemcpyHostToDevice);
 
-    // Allocate GPU memory
-    cudaError_t err = cudaMalloc(&d_input, inputSize);
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA malloc failed for input: " << cudaGetErrorString(err) << "\n";
-        return;
-    }
-
-    err = cudaMalloc(&d_output, outputSize);
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA malloc failed for output: " << cudaGetErrorString(err) << "\n";
-        cudaFree(d_input);
-        return;
-    }
-
-    // Copy input data to GPU
-    err = cudaMemcpy(d_input, input, inputSize, cudaMemcpyHostToDevice);
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA memcpy to device failed: " << cudaGetErrorString(err) << "\n";
-        cudaFree(d_input);
-        cudaFree(d_output);
-        return;
-    }
-
-    // Debug: Print kernel configuration
     int threadsPerBlock = 256;
     int blocksPerGrid = (cols + threadsPerBlock - 1) / threadsPerBlock;
 
-    std::cout << "Launching kernel with " << blocksPerGrid 
-              << " blocks and " << threadsPerBlock << " threads\n";
-
-    // Launch kernel
     SumAcrossRowsKernel<<<blocksPerGrid, threadsPerBlock>>>(d_input, d_output, rows, cols);
     cudaDeviceSynchronize();
 
-    // Check for kernel launch errors
-    err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA kernel launch failed: " << cudaGetErrorString(err) << "\n";
-        cudaFree(d_input);
-        cudaFree(d_output);
-        return;
-    }
+    cudaMemcpy(output, d_output, outputSize, cudaMemcpyDeviceToHost);
 
-    // Copy result back to host
-    err = cudaMemcpy(output, d_output, outputSize, cudaMemcpyDeviceToHost);
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA memcpy to host failed: " << cudaGetErrorString(err) << "\n";
-        cudaFree(d_input);
-        cudaFree(d_output);
-        return;
-    }
-
-    // Free GPU memory
+    // Free device memory
     cudaFree(d_input);
     cudaFree(d_output);
 }
+
 
 void MatrixOps::reset() {
     cudaError_t err = cudaDeviceReset();

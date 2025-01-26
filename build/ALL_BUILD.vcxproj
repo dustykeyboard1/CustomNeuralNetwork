@@ -176,9 +176,9 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </ProjectReference>
-    <ProjectReference Include="C:\Users\Michael\Coding\C++\CustomNeuralNetwork\build\MatrixOpsTests.vcxproj">
-      <Project>{57D057CD-511A-3144-B1E2-13546AB39070}</Project>
-      <Name>MatrixOpsTests</Name>
+    <ProjectReference Include="C:\Users\Michael\Coding\C++\CustomNeuralNetwork\build\NeuralNetTests.vcxproj">
+      <Project>{BC880CCD-ED27-3BA4-80C5-CA72184C82DB}</Project>
+      <Name>NeuralNetTests</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

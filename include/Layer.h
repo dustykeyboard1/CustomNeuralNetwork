@@ -8,15 +8,25 @@ private:
     int outputSize;
     float* weights;
     float* biases;
+    float* output;
 
     Layer* prevLayer;
     Layer* nextLayer;
 
+    float* weightGradients = nullptr;
+    float* biasGradients = nullptr;
+    float* weightsTransposed = nullptr;
+    float* prevLayerOutputTransposed = nullptr;
+
+    std::string activationType;
+
+    int batchSize = 0;
+
 public:
-    Layer(int inputSize, int outputSize, Layer* prevLayer = nullptr);
+    Layer(int inputSize, int outputSize, const std::string& activationType = "relu", Layer* prevLayer = nullptr);
     ~Layer();
 
-    void initualizeWeights();
+    void initializeWeights();
     void initialBiases();
     float* forward(const float* input, int batchSize);
     
@@ -29,6 +39,23 @@ public:
     int getOutputSize() const;
     Layer* getNextLayer() const;
     Layer* getPrevLayer() const;
+
+    void setWeightGradients(float* gradients);
+    float* getWeightGradients() const;
+    float* getWeightsTransposed();
+
+    const float* getPrevLayerOutput() const;
+    float* getPrevLayerOutputTransposed();
+
+    void setBiasGradients(float* gradients);
+    float* getBiasGradients() const;
+
+    const float* getOutput() const;
+    void setOutput(float* out);
+
+    int getBatchSize() const;
+    void setBatchSize(int bSize);
+
 };
 
 #endif

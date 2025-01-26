@@ -244,17 +244,12 @@ void testAddBias() {
 
     // Validate the result
     for (int i = 0; i < batchSize * outputSize; ++i) {
-        // assert(fabs(result[i] - expected[i]) < 1e-3);
-        for (int i = 0; i < batchSize; ++i) {
-        for (int j = 0; j < outputSize; ++j) { 
-            std::cout << result[i * outputSize + j] << " ";
-        }
-        std::cout << "\n";
+        assert(fabs(result[i] - expected[i]) < 1e-3);
+        
     }
-    }
-
     std::cout << "Bias Addition passed.\n";
 }
+
 
 void testSumAcrossRows() {
     const int rows = 3, cols = 4;
@@ -263,23 +258,18 @@ void testSumAcrossRows() {
         5, 6, 7, 8,
         9, 10, 11, 12
     };
-    float output[4] = {0}; // Expected: {15, 18, 21, 24}
+    float output[cols] = {0}; // Expected: {15, 18, 21, 24}
 
     MatrixOps::sumAcrossRows(input, output, rows, cols);
 
-    std::cout << "Output values:\n";
+    // Check output
+    float expected[4] = {15.0f, 18.0f, 21.0f, 24.0f};
     for (int i = 0; i < cols; ++i) {
-        std::cout << output[i] << " ";
+        assert(fabs(output[i] - expected[i]) < 1e-3);
     }
-    std::cout << "\n";
-
-    float expected[4] = {15, 18, 21, 24};
-    for (int i = 0; i < cols; ++i) {
-        assert(fabs(output[i] - expected[i]) < 1e-5);
-    }
-
     std::cout << "SumAcrossRows passed.\n";
 }
+
 
 
 
