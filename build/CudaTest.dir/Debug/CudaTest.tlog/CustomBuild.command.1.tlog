@@ -1,0 +1,10 @@
+^C:\USERS\MICHAEL\CODING\C++\CUSTOMNEURALNETWORK\CMAKELISTS.TXT
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/Michael/Coding/C++/CustomNeuralNetwork -BC:/Users/Michael/Coding/C++/CustomNeuralNetwork/build --check-stamp-file C:/Users/Michael/Coding/C++/CustomNeuralNetwork/build/CMakeFiles/generate.stamp
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

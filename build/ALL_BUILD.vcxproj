@@ -176,10 +176,6 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </ProjectReference>
-    <ProjectReference Include="C:\Users\Michael\Coding\C++\CustomNeuralNetwork\build\CustomNeuralNetwork.vcxproj">
-      <Project>{2EF5B305-605E-3EA7-93D5-E68EB3C2C832}</Project>
-      <Name>CustomNeuralNetwork</Name>
-    </ProjectReference>
     <ProjectReference Include="C:\Users\Michael\Coding\C++\CustomNeuralNetwork\build\MatrixOpsTests.vcxproj">
       <Project>{57D057CD-511A-3144-B1E2-13546AB39070}</Project>
       <Name>MatrixOpsTests</Name>

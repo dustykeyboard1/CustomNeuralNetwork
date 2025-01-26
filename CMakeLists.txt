@@ -22,10 +22,22 @@ set(SOURCES
 )
 
 # Add executable target
-add_executable(CustomNeuralNetwork ${SOURCES})
+# add_executable(CustomNeuralNetwork ${SOURCES})
 
 add_executable(MatrixOpsTests tests/test_MatrixOps.cpp src/MatrixOps.cu)
 target_link_libraries(MatrixOpsTests ${CUDA_LIBRARIES})
+
+# add_executable(LossFunctionTests tests/test_LossFuncs.cpp src/LossOps.cu)
+# target_link_libraries(LossFunctionTests ${CUDA_LIBRARIES})
+
+# add_executable(CudaTest tests/cuda_tests.cu src/MatrixOps.cu)
+# target_link_libraries(CudaTest ${CUDA_LIBRARIES})
+
+# add_executable(LayerTest tests/test_layer.cpp src/Layer.cu src/MatrixOps.cu)
+# target_link_libraries(LayerTest ${CUDA_LIBRARIES})
+
+# add_executable(NeuralNetTests tests/test_NN.cpp src/NeuralNet.cu src/Layer.cu src/MatrixOps.cu)
+# target_link_libraries(NeuralNetTests ${CUDA_LIBRARIES})
 
 # Ensure consistent runtime libraries
 if(MSVC)

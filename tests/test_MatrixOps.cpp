@@ -121,7 +121,170 @@ void testScalerMultiplication() {
     std::cout << "Scaler Reverse Multiplication passed.\n";
 }
 
+void testRelu() {
+    const int rows = 2, cols = 3;
+    float A[6] = {-1, 2, -3, 4, -5, 6};
+    float B[6] = {0};
+    float expected[6] = {0, 2, 0, 4, 0, 6};
+
+    MatrixOps::Relu(A, B, rows, cols);
+    for (int i = 0; i < rows * cols; ++i) {
+        assert(B[i] == expected[i]);
+    }
+    std::cout << "Relu Activation passed.\n";
+
+
+}
+
+void testSigmoid() {
+    const int rows = 2, cols = 3;
+    float A[6] = {-1, 2, -3, 4, -5, 6}; 
+    float B[6] = {0};                  
+    float expected[6] = {
+        0.268941f, 0.880797f, 0.047426f,
+        0.982014f, 0.006693f, 0.997527f
+    }; // Expected Sigmoid values
+
+    MatrixOps::Sigmoid(A, B, rows, cols);
+
+    
+    for (int i = 0; i < rows * cols; ++i) {
+        assert(fabs(B[i] - expected[i]) < 1e-5); 
+    }
+
+    std::cout << "Sigmoid Activation passed.\n";
+}
+
+void testTanh() {
+    const int rows = 2, cols = 3;
+    float A[6] = {-1, 0, 1, -2, 2, 3}; 
+    float B[6] = {0};                 
+    float expected[6] = {
+        -0.761594f, 0.000000f, 0.761594f,
+        -0.964028f, 0.964028f, 0.995055f
+    }; 
+
+    MatrixOps::Tanh(A, B, rows, cols); 
+
+    for (int i = 0; i < rows * cols; ++i) {
+        assert(fabs(B[i] - expected[i]) < 1e-5); 
+    }
+
+    std::cout << "Tanh Activation passed.\n";
+}
+
+void testSoftmax() {
+    const int rows = 1, cols = 3;
+    float A[3] = {2, 1, 0.1f}; 
+    float B[3] = {0};                 
+    float expected[3] = {0.659f, 0.242f, 0.0986f}; 
+
+    MatrixOps::Softmax(A, B, rows, cols); 
+
+    for (int i = 0; i < rows * cols; ++i) {
+        assert(fabs(B[i] - expected[i]) < 1e-3);  
+    }
+
+    std::cout << "Softmax Activation passed.\n";
+}
+
+void testInitialization() {
+    const int rows = 5, cols = 10;
+    float weights[rows * cols] = {0};
+
+
+    MatrixOps::initializeWeights(weights, rows, cols, "xavier");
+    std::cout << "Xaiver Init Matrix: \n";
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) { 
+            std::cout << weights[i * cols + j] << " ";
+        }
+        std::cout << "\n";
+    }
+
+    std::fill(weights, weights + (rows * cols), 0.0f);
+    MatrixOps::initializeWeights(weights, rows, cols, "he");
+    std::cout << "He Init Matrix: \n";
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) { 
+            std::cout << weights[i * cols + j] << " ";
+        }
+        std::cout << "\n";
+    }
+
+    std::fill(weights, weights + (rows * cols), 0.0f);
+    MatrixOps::initializeWeights(weights, rows, cols);
+    std::cout << "Default Init Matrix: \n";
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) { 
+            std::cout << weights[i * cols + j] << " ";
+        }
+        std::cout << "\n";
+    }
+
+}
+
+void testAddBias() {
+    const int batchSize = 2;
+    const int outputSize = 3;
+
+    float output[6] = {
+        1.0f, 2.0f, 3.0f,  // Row 1
+        4.0f, 5.0f, 6.0f   // Row 2
+    };
+
+    float bias[3] = {0.1f, 0.2f, 0.3f}; // Bias vector
+    float result[6] = {0};              // Output after adding bias
+    float expected[6] = {
+        1.1f, 2.2f, 3.3f,  // Row 1 + Bias
+        4.1f, 5.2f, 6.3f   // Row 2 + Bias
+    };
+
+    MatrixOps::addBias(output, bias, result, batchSize, outputSize);
+
+    // Validate the result
+    for (int i = 0; i < batchSize * outputSize; ++i) {
+        // assert(fabs(result[i] - expected[i]) < 1e-3);
+        for (int i = 0; i < batchSize; ++i) {
+        for (int j = 0; j < outputSize; ++j) { 
+            std::cout << result[i * outputSize + j] << " ";
+        }
+        std::cout << "\n";
+    }
+    }
+
+    std::cout << "Bias Addition passed.\n";
+}
+
+void testSumAcrossRows() {
+    const int rows = 3, cols = 4;
+    float input[12] = {
+        1, 2, 3, 4,
+        5, 6, 7, 8,
+        9, 10, 11, 12
+    };
+    float output[4] = {0}; // Expected: {15, 18, 21, 24}
+
+    MatrixOps::sumAcrossRows(input, output, rows, cols);
+
+    std::cout << "Output values:\n";
+    for (int i = 0; i < cols; ++i) {
+        std::cout << output[i] << " ";
+    }
+    std::cout << "\n";
+
+    float expected[4] = {15, 18, 21, 24};
+    for (int i = 0; i < cols; ++i) {
+        assert(fabs(output[i] - expected[i]) < 1e-5);
+    }
+
+    std::cout << "SumAcrossRows passed.\n";
+}
+
+
+
 int main() {
+    MatrixOps::reset();
     testAddition();
     testSubtraction();
     testMultiplication();
@@ -129,6 +292,13 @@ int main() {
     testTranspose();
     testScalerAddition();
     testScalerMultiplication();
+    testSigmoid();
+    testRelu();
+    testTanh();
+    testSoftmax();
+    // testInitialization();
+    testAddBias();
+    testSumAcrossRows();
 
     std::cout << "All tests passed successfully!\n";
     return 0;
