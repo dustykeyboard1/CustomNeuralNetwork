@@ -50,7 +50,7 @@ public:
     void setBiasGradients(float* gradients);
     float* getBiasGradients() const;
 
-    const float* getOutput() const;
+    float* getOutput() const;
     void setOutput(float* out);
 
     int getBatchSize() const;

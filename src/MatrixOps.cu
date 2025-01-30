@@ -236,7 +236,7 @@ void subtract(const float* A, const float* B, float* C, int rows, int cols) {
 
 }
 
-void multiply(const float* A, const float* B, float* C, int rowsA, int colsA, int rowsB, int colsB) {
+void multiply(const float* A, const float* B, float* C, int rowsA, int colsA, int rowsB, int colsB, bool isGPU) {
     if (colsA != rowsB) {
         std::cerr << "[ERROR] Matrix dimensions do not align for multiplication.\n";
         return;
@@ -255,28 +255,44 @@ void multiply(const float* A, const float* B, float* C, int rowsA, int colsA, in
 
 
     float *d_A, *d_B, *d_C;
-    cudaMalloc(&d_A, sizeA);
-    cudaMalloc(&d_B, sizeB);
-    cudaMalloc(&d_C, sizeC);
+    // cudaMalloc(&d_A, sizeA);
+    // cudaMalloc(&d_B, sizeB);
+    // cudaMalloc(&d_C, sizeC);
 
-    cudaError_t allocErr = cudaMalloc(&d_A, sizeA);
-    if (allocErr != cudaSuccess) {
-        std::cerr << "[ERROR] cudaMalloc failed for d_A: " << cudaGetErrorString(allocErr) << "\n";
-        return;
+    // cudaError_t allocErr = cudaMalloc(&d_A, sizeA);
+    // if (allocErr != cudaSuccess) {
+    //     std::cerr << "[ERROR] cudaMalloc failed for d_A: " << cudaGetErrorString(allocErr) << "\n";
+    //     return;
+    // }
+    // std::cout << "[DEBUG] Verifying device-side Matrix A after cudaMemcpy (first 10 values): ";
+    // float* hostAAfterMemcpy = new float[rowsA * colsA];
+    // cudaMemcpy(hostAAfterMemcpy, d_A, sizeA, cudaMemcpyDeviceToHost);
+    // cudaDeviceSynchronize();
+    // for (int i = 0; i < 10 && i < rowsA * colsA; ++i) {
+    //     std::cout << hostAAfterMemcpy[i] << " ";
+    // }
+    // std::cout << "\n";
+    // delete[] hostAAfterMemcpy;
+
+    // cudaMemcpy(d_A, A, sizeA, cudaMemcpyHostToDevice);
+    // cudaMemcpy(d_B, B, sizeB, cudaMemcpyHostToDevice);
+    // cudaMemcpy(d_C, C, sizeC, cudaMemcpyHostToDevice);
+
+    if (!isGPU) {
+        // Allocate and copy if data is on CPU
+        cudaMalloc(&d_A, sizeA);
+        cudaMalloc(&d_B, sizeB);
+        cudaMalloc(&d_C, sizeC);
+
+        cudaMemcpy(d_A, A, sizeA, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_B, B, sizeB, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_C, C, sizeC, cudaMemcpyHostToDevice);
+    } else {
+        // Assume A, B, C are already on GPU
+        d_A = (float*)A;
+        d_B = (float*)B;
+        d_C = (float*)C;
     }
-    std::cout << "[DEBUG] Verifying device-side Matrix A after cudaMemcpy (first 10 values): ";
-    float* hostAAfterMemcpy = new float[rowsA * colsA];
-    cudaMemcpy(hostAAfterMemcpy, d_A, sizeA, cudaMemcpyDeviceToHost);
-    cudaDeviceSynchronize();
-    for (int i = 0; i < 10 && i < rowsA * colsA; ++i) {
-        std::cout << hostAAfterMemcpy[i] << " ";
-    }
-    std::cout << "\n";
-    delete[] hostAAfterMemcpy;
-
-
-    cudaMemcpy(d_B, B, sizeB, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_C, C, sizeC, cudaMemcpyHostToDevice);
 
 
     // Debug: Inspect A
@@ -289,17 +305,17 @@ void multiply(const float* A, const float* B, float* C, int rowsA, int colsA, in
     // std::cout << "\n";
 
     // Debug: Inspect B
-    float* hostB = new float[rowsB * colsB];
-    cudaMemcpy(hostB, d_B, sizeB, cudaMemcpyDeviceToHost);
-    std::cout << "[DEBUG] MAtrixOps: Matrix B (first 10 values): ";
-    for (int i = 0; i < 10 && i < rowsB * colsB; ++i) {
-        std::cout << hostB[i] << " ";
-    }
-    std::cout << "\n";
+    // float* hostB = new float[rowsB * colsB];
+    // cudaMemcpy(hostB, d_B, sizeB, cudaMemcpyDeviceToHost);
+    // std::cout << "[DEBUG] MAtrixOps: Matrix B (first 10 values): ";
+    // for (int i = 0; i < 10 && i < rowsB * colsB; ++i) {
+    //     std::cout << hostB[i] << " ";
+    // }
+    // std::cout << "\n";
 
     // Clean up debug arrays
-    delete[] hostA;
-    delete[] hostB;
+    // delete[] hostA;
+    // delete[] hostB;
 
     dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((colsB + 15) / 16, (rowsA + 15) / 16);
@@ -499,11 +515,11 @@ void Softmax(const float* A, float* B, int rows, int cols) {
     cudaFree(d_B);
 }
 
-void initializeWeights(float* weights, int rows, int cols, const std::string& initType) {
+void initializeWeights(float* d_weights, int rows, int cols, const std::string& initType) {
     size_t size = rows * cols * sizeof(float);
-    float *d_weights;
+    // float *d_weights;
 
-    cudaMalloc(&d_weights, size);
+    // cudaMalloc(&d_weights, size);
 
     cudaMemset(d_weights, 0, size);
 
@@ -528,10 +544,10 @@ void initializeWeights(float* weights, int rows, int cols, const std::string& in
     initializeWeightsKernel<<<blocksPerGrid, threadsPerBlock>>>(d_weights, rows, cols, d_states, initTypeCode);
     cudaDeviceSynchronize();
 
-    cudaMemcpy(weights, d_weights, size, cudaMemcpyDeviceToHost);
+    // cudaMemcpy(weights, d_weights, size, cudaMemcpyDeviceToHost);
 
     // Free memory
-    cudaFree(d_weights);
+    // cudaFree(d_weights);
     cudaFree(d_states);
 }
 
