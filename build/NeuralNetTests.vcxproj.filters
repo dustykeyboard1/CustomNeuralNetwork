@@ -4,6 +4,9 @@
     <ClCompile Include="C:\Users\Michael\Coding\C++\CustomNeuralNetwork\tests\test_NN.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="C:\Users\Michael\Coding\C++\CustomNeuralNetwork\src\Utils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="..\src\NeuralNet.cu">

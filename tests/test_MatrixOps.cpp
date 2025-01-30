@@ -38,7 +38,7 @@ void testMultiplication() {
     float B[6] = {7, 8, 9, 10, 11, 12};
     float C[4] = {0};
 
-    MatrixOps::multiply(A, B, C, rowsA, colsA, rowsB, colsB);
+    MatrixOps::multiply(A, B, C, rowsA, colsA, rowsB, colsB, false);
 
     float expected[4] = {58, 64, 139, 154};
     for (int i = 0; i < rowsA * colsB; ++i) {

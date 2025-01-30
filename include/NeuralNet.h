@@ -20,6 +20,7 @@ private:
                                int startIdx, int batchSize, int numFeatures);
     void applyGradients(float learningRate);
     void debugPrintGPUArray(const char* name, const float* d_array, int rows, int cols);
+    void forward();
 
 public:
     NeuralNet();
@@ -27,12 +28,20 @@ public:
 
     void NeuralNet::initialize(int inputSize, int* Nuerons, int hiddenLayers, int outputFeatures);   
     // void addLayer(int inputSize, int outputSize, const std::string& activation); // Add hidden layers
-    void train(const float* inputs, const float* targets, int numSamples, int numFeatures, int batchSize, int epochs, float learningRate);
-
+    void train(const float* trainingData,
+               int numDays,
+               int lookback,
+               int numFeatures,
+               int numPredictions,
+               int batchSize,
+               float learningRate, 
+               int numEpochs,
+               const int* targetIndices);
+    void setInput(const float* input, int rows, int cols);
     Layer* getInputLayer() const;
     Layer* getOutputLayer() const;
 
-    void forward();
+    
 
 };
 

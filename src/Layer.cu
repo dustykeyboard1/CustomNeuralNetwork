@@ -2,24 +2,31 @@
 #include <iostream>
 
 Layer::Layer(int inputSize, int outputSize, const std::string& activationType, Layer* prevLayer)
-    : inputSize(inputSize), outputSize(outputSize), activationType(activationType), prevLayer(prevLayer), nextLayer(nullptr) {
-        size_t weightSize = inputSize * outputSize * sizeof(float);
-        size_t biasSize = outputSize * sizeof(float);
+    : inputSize(inputSize), outputSize(outputSize), activationType(activationType), 
+      prevLayer(prevLayer), nextLayer(nullptr) {
+    
+    // Weights matrix should be (inputSize x outputSize)
+    size_t weightSize = inputSize * outputSize * sizeof(float);
+    size_t biasSize = outputSize * sizeof(float);
+    
+    // Output will always be (1 x outputSize) for forward propagation
+    // This represents the activated outputs of the neurons in this layer
+    size_t outputSizeBytes = 1 * outputSize * sizeof(float);
 
-        cudaMalloc(&weights, weightSize);
-        cudaMalloc(&biases, biasSize);
+    cudaMalloc(&weights, weightSize);
+    cudaMalloc(&biases, biasSize);
+    cudaMalloc(&output, outputSizeBytes);
+    
+    // Initialize output buffer to zeros
+    cudaMemset(output, 0, outputSizeBytes);
 
-        size_t outputSizeBytes = inputSize * outputSize * sizeof(float);
-        if (prevLayer != nullptr) {
-            outputSizeBytes = prevLayer->getInputSize() * outputSize * sizeof(float);
-        } 
+    // Initialize weights with proper dimensions
+    initializeWeights();
+    initialBiases();
 
-        cudaMalloc(&output, outputSizeBytes);
-
-        initializeWeights();
-        initialBiases();
-
-        std::cout << "Initialized layer with " << inputSize << " inputs and " << outputSize << " outputs.\n";
+    std::cout << "Initialized layer with:\n"
+              << "  - Weight matrix: " << inputSize << "x" << outputSize << "\n"
+              << "  - Output size: 1x" << outputSize << "\n";
 }
          
 Layer::~Layer() {

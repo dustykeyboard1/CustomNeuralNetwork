@@ -16,7 +16,7 @@ namespace MatrixOps {
     void Tanh(const float* A, float* B, int rows, int cols);
     void Softmax(const float* A, float* B, int rows, int cols); 
     void initializeWeights(float* d_weights, int rows, int cols, const std::string& initType = "uniform");
-    void addBias(const float* output, const float* bias, float* result, int batchSize, int outputSize);
+    void addBias(const float* output, const float* bias, float* result, int batchSize, int outputSize, bool isGPU = false);
     void sumAcrossRows(const float* input, float* output, int rows, int cols);
     void reset();
 

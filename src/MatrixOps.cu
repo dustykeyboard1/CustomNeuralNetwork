@@ -241,96 +241,38 @@ void multiply(const float* A, const float* B, float* C, int rowsA, int colsA, in
         std::cerr << "[ERROR] Matrix dimensions do not align for multiplication.\n";
         return;
     }
-    if (A == nullptr) {
-        std::cerr << "[ERROR] Host pointer A is null.\n";
-        return;
-    }
 
-    size_t sizeA = rowsA * colsA * sizeof(float);
-    std::cout << "[DEBUG] Calculated sizeA: " << sizeA << " bytes\n";
-
-    size_t sizeB = rowsB * colsB * sizeof(float);
     size_t sizeC = rowsA * colsB * sizeof(float);
+    
+    dim3 threadsPerBlock(16, 16);
+    dim3 blocksPerGrid((colsB + 15) / 16, (rowsA + 15) / 16);
 
-
-
-    float *d_A, *d_B, *d_C;
-    // cudaMalloc(&d_A, sizeA);
-    // cudaMalloc(&d_B, sizeB);
-    // cudaMalloc(&d_C, sizeC);
-
-    // cudaError_t allocErr = cudaMalloc(&d_A, sizeA);
-    // if (allocErr != cudaSuccess) {
-    //     std::cerr << "[ERROR] cudaMalloc failed for d_A: " << cudaGetErrorString(allocErr) << "\n";
-    //     return;
-    // }
-    // std::cout << "[DEBUG] Verifying device-side Matrix A after cudaMemcpy (first 10 values): ";
-    // float* hostAAfterMemcpy = new float[rowsA * colsA];
-    // cudaMemcpy(hostAAfterMemcpy, d_A, sizeA, cudaMemcpyDeviceToHost);
-    // cudaDeviceSynchronize();
-    // for (int i = 0; i < 10 && i < rowsA * colsA; ++i) {
-    //     std::cout << hostAAfterMemcpy[i] << " ";
-    // }
-    // std::cout << "\n";
-    // delete[] hostAAfterMemcpy;
-
-    // cudaMemcpy(d_A, A, sizeA, cudaMemcpyHostToDevice);
-    // cudaMemcpy(d_B, B, sizeB, cudaMemcpyHostToDevice);
-    // cudaMemcpy(d_C, C, sizeC, cudaMemcpyHostToDevice);
-
-    if (!isGPU) {
-        // Allocate and copy if data is on CPU
+    if (isGPU) {
+        // All pointers are already on GPU, just launch kernel
+        MultiplicationKernel<<<blocksPerGrid, threadsPerBlock>>>(A, B, C, rowsA, colsA, rowsB, colsB);
+    } else {
+        // Handle CPU to GPU case
+        float *d_A, *d_B, *d_C;
+        size_t sizeA = rowsA * colsA * sizeof(float);
+        size_t sizeB = rowsB * colsB * sizeof(float);
+        
         cudaMalloc(&d_A, sizeA);
         cudaMalloc(&d_B, sizeB);
         cudaMalloc(&d_C, sizeC);
 
         cudaMemcpy(d_A, A, sizeA, cudaMemcpyHostToDevice);
         cudaMemcpy(d_B, B, sizeB, cudaMemcpyHostToDevice);
-        cudaMemcpy(d_C, C, sizeC, cudaMemcpyHostToDevice);
-    } else {
-        // Assume A, B, C are already on GPU
-        d_A = (float*)A;
-        d_B = (float*)B;
-        d_C = (float*)C;
+
+        MultiplicationKernel<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, rowsA, colsA, rowsB, colsB);
+
+        cudaMemcpy(C, d_C, sizeC, cudaMemcpyDeviceToHost);
+
+        cudaFree(d_A);
+        cudaFree(d_B);
+        cudaFree(d_C);
     }
-
-
-    // Debug: Inspect A
-    // float* hostA = new float[rowsA * colsA];
-    // cudaMemcpy(hostA, d_A, sizeA, cudaMemcpyDeviceToHost);
-    // std::cout << "[DEBUG] MAtrixOps: Matrix A (first 10 values): ";
-    // for (int i = 0; i < 10 && i < rowsA * colsA; ++i) {
-    //     std::cout << hostA[i] << " ";
-    // }
-    // std::cout << "\n";
-
-    // Debug: Inspect B
-    // float* hostB = new float[rowsB * colsB];
-    // cudaMemcpy(hostB, d_B, sizeB, cudaMemcpyDeviceToHost);
-    // std::cout << "[DEBUG] MAtrixOps: Matrix B (first 10 values): ";
-    // for (int i = 0; i < 10 && i < rowsB * colsB; ++i) {
-    //     std::cout << hostB[i] << " ";
-    // }
-    // std::cout << "\n";
-
-    // Clean up debug arrays
-    // delete[] hostA;
-    // delete[] hostB;
-
-    dim3 threadsPerBlock(16, 16);
-    dim3 blocksPerGrid((colsB + 15) / 16, (rowsA + 15) / 16);
-
-    MultiplicationKernel<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, rowsA, colsA, rowsB,
-                                                                colsB);
-
+    
     cudaDeviceSynchronize();
-    cudaMemcpy(C, d_C, sizeC, cudaMemcpyDeviceToHost); 
-
-
-    cudaFree(d_A);
-    cudaFree(d_B);
-    cudaFree(d_C);
-
 }
 
 void divide(const float* A, const float* B, float* C, int rows, int cols) {
@@ -552,32 +494,42 @@ void initializeWeights(float* d_weights, int rows, int cols, const std::string& 
 }
 
 
-void MatrixOps::addBias(const float* output, const float* bias, float* result, int batchSize, int outputSize) {
+void MatrixOps::addBias(const float* output, const float* bias, float* result, int batchSize, int outputSize, bool isGPU) {
     size_t totalElements = batchSize * outputSize * sizeof(float);
     size_t biasSize = outputSize * sizeof(float);
 
-    float *d_output = nullptr, *d_bias = nullptr, *d_result = nullptr;
+    dim3 threadsPerBlock(256);
+    dim3 blocksPerGrid((batchSize * outputSize + threadsPerBlock.x - 1) / threadsPerBlock.x);
 
-    // Allocate GPU memory
-    cudaMalloc(&d_output, totalElements);
-    cudaMalloc(&d_bias, biasSize);
-    cudaMalloc(&d_result, totalElements);
+    if (isGPU) {
+        // All pointers are already on GPU, just launch kernel
+        AddBiasKernel<<<blocksPerGrid, threadsPerBlock>>>(output, bias, result, batchSize, outputSize);
+    } else {
+        // Handle CPU to GPU case
+        float *d_output = nullptr, *d_bias = nullptr, *d_result = nullptr;
 
-    cudaMemcpy(d_output, output, totalElements, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_bias, bias, biasSize, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_result, result, totalElements, cudaMemcpyHostToDevice);
+        // Allocate GPU memory
+        cudaMalloc(&d_output, totalElements);
+        cudaMalloc(&d_bias, biasSize);
+        cudaMalloc(&d_result, totalElements);
 
-    int threadsPerBlock = 256;
-    int blocksPerGrid = (batchSize * outputSize + threadsPerBlock - 1) / threadsPerBlock;
+        // Copy data to GPU
+        cudaMemcpy(d_output, output, totalElements, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_bias, bias, biasSize, cudaMemcpyHostToDevice);
 
-    AddBiasKernel<<<blocksPerGrid, threadsPerBlock>>>(d_output, d_bias, d_result, batchSize, outputSize);
+        // Launch kernel
+        AddBiasKernel<<<blocksPerGrid, threadsPerBlock>>>(d_output, d_bias, d_result, batchSize, outputSize);
+
+        // Copy result back to host
+        cudaMemcpy(result, d_result, totalElements, cudaMemcpyDeviceToHost);
+
+        // Free GPU memory
+        cudaFree(d_output);
+        cudaFree(d_bias);
+        cudaFree(d_result);
+    }
+    
     cudaDeviceSynchronize();
-
-    cudaMemcpy(result, d_result, totalElements, cudaMemcpyDeviceToHost);
-
-    cudaFree(d_output);
-    cudaFree(d_bias);
-    cudaFree(d_result);
 }
 
 

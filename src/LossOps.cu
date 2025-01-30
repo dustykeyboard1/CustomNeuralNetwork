@@ -53,37 +53,50 @@ __global__ void crossEntropyLossKernel(const float* yTrue, const float* yPred, f
     }
 }
 
-float MeanSquaredError(const float* yTrue, const float* yPred, int size) {
-    float* d_yTrue; 
-    float* d_yPred;
-    float* d_loss;
-    float h_loss = 0.0f;
+float LossOps::MeanSquaredError(const float* targets, const float* predictions, int size, bool isGPU) {
+    float *d_targets, *d_predictions, *d_loss;
+    float totalLoss = 0.0f;
 
-    cudaMalloc(&d_yTrue, sizeof(float) * size);
-    cudaMalloc(&d_yPred, sizeof(float) * size);
-    cudaMalloc(&d_loss, sizeof(float));
+    if (isGPU) {
+        // Data is already on GPU, just allocate loss buffer
+        cudaMalloc(&d_loss, size * sizeof(float));
+        
+        // Launch kernel directly with GPU data
+        int blockSize = 256;
+        int numBlocks = (size + blockSize - 1) / blockSize;
+        MSEKernel<<<numBlocks, blockSize>>>(targets, predictions, d_loss, size);
+    } else {
+        // Allocate and copy data to GPU
+        cudaMalloc(&d_targets, size * sizeof(float));
+        cudaMalloc(&d_predictions, size * sizeof(float));
+        cudaMalloc(&d_loss, size * sizeof(float));
 
-    cudaMemcpy(d_yTrue, yTrue, sizeof(float) * size, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_yPred, yPred, sizeof(float) * size, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_loss, &h_loss, sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_targets, targets, size * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_predictions, predictions, size * sizeof(float), cudaMemcpyHostToDevice);
 
-    // Configure kernel launch
-    int threadsPerBlock = 256;
-    int blocksPerGrid = (size + threadsPerBlock - 1) / threadsPerBlock;
+        int blockSize = 256;
+        int numBlocks = (size + blockSize - 1) / blockSize;
+        MSEKernel<<<numBlocks, blockSize>>>(d_targets, d_predictions, d_loss, size);
+    }
 
-    MSEKernel<<<blocksPerGrid, threadsPerBlock *sizeof(float)>>>(d_yTrue, d_yPred, d_loss, size);
-    cudaMemcpy(&h_loss, d_loss, sizeof(float), cudaMemcpyDeviceToHost);
-
-    // Free GPU memory
-    cudaFree(d_yTrue);
-    cudaFree(d_yPred);
+    // Reduce on GPU to compute sum
+    // ... (reduction kernel to sum all losses)
+    
+    // Copy final result back
+    float meanLoss;
+    cudaMemcpy(&meanLoss, d_loss, sizeof(float), cudaMemcpyDeviceToHost);
+    
+    // Cleanup
+    if (!isGPU) {
+        cudaFree(d_targets);
+        cudaFree(d_predictions);
+    }
     cudaFree(d_loss);
 
-    // Compute and return the average loss
-    return h_loss / size;
+    return meanLoss / size;
 }
 
-float gpuCrossEntropyLoss(const float* yTrue, const float* yPred, int batchSize, int numClasses) {
+float LossOps::gpuCrossEntropyLoss(const float* yTrue, const float* yPred, int batchSize, int numClasses) {
     float* d_yTrue;
     float* d_yPred;
     float* d_loss;

@@ -3,6 +3,7 @@
 #include <iostream>
 #include <algorithm>
 #include <random>
+#include "Utils.h"
 
 NeuralNet::NeuralNet() 
     : inputLayer(nullptr), outputLayer(nullptr), firstLayer(nullptr) {}
@@ -86,184 +87,132 @@ void NeuralNet::initialize(int inputSize, int* Nuerons, int hiddenLayers, int ou
 //               << outputSize << " outputs.\n";
 // }
 
-void NeuralNet::train(const float* inputs, const float* targets, int numSamples, int numFeatures, int batchSize, int epochs, float learningRate) {
-    // Helper variables
-    // int numBatches = (numSamples + batchSize - 1) / batchSize; // Ceiling of numSamples / batchSize
-    // std::vector<int> indices(numSamples);
+void NeuralNet::train(const float* trainingData,
+                     int numDays,
+                     int lookback,
+                     int numFeatures,
+                     int numPredictions,
+                     int batchSize,
+                     float learningRate,
+                     int numEpochs,
+                     const int* targetIndices) {
+    std::cout << "Training..." << std::endl;
+    int inputSize = lookback * numFeatures;
+    int outputSize = numPredictions;
+    int numPossibleSequences = numDays - lookback - 1;
+    int numBatchesPerEpoch = numPossibleSequences / batchSize;
+    
+    std::vector<int> shuffledIndices = Utils::generateShuffledIndices(numPossibleSequences);
+    
+    // Allocate device memory for indices
+    int* d_indices = nullptr;
+    cudaError_t cudaStatus = cudaMalloc(&d_indices, numPossibleSequences * sizeof(int));
+    if (cudaStatus != cudaSuccess) {
+        std::cerr << "cudaMalloc failed: " << cudaGetErrorString(cudaStatus) << std::endl;
+        return;
+    }
+    
+    cudaStatus = cudaMemcpy(d_indices, shuffledIndices.data(), 
+                           numPossibleSequences * sizeof(int), 
+                           cudaMemcpyHostToDevice);
+    if (cudaStatus != cudaSuccess) {
+        std::cerr << "cudaMemcpy failed: " << cudaGetErrorString(cudaStatus) << std::endl;
+        cudaFree(d_indices);
+        return;
+    }
 
-    // // Initialize indices for shuffling
-    // for (int i = 0; i < numSamples; ++i) {
-    //     indices[i] = i;
-    // }
-
-    // std::cout << "[DEBUG] Starting training with " << epochs << " epochs, batch size: " << batchSize << ", and learning rate: " << learningRate << "\n";
-
-    // // Epoch loop
-    // std::random_device rd; // Seed
-    // std::default_random_engine rng(rd());
-    // for (int epoch = 0; epoch < epochs; ++epoch) {
-    //     // Shuffle data
-    //     std::shuffle(indices.begin(), indices.end(), rng);
-    //     std::cout << "[DEBUG] Epoch " << epoch + 1 << "/" << epochs << ": Data shuffled\n";
-
-    //     float totalLoss = 0.0f;
-
-    //     // Batch loop
-    //     for (int batch = 0; batch < numBatches; ++batch) {
-    //         std::cout << "[DEBUG] Processing batch " << batch + 1 << "/" << numBatches << "\n";
-
-    //         // Extract current batch data
-    //         int startIdx = batch * batchSize;
-    //         int endIdx = std::min(startIdx + batchSize, numSamples);
-    //         int currentBatchSize = endIdx - startIdx;
-
-    //         std::cout << "[DEBUG] Extracting batch data: startIdx = " << startIdx << ", endIdx = " << endIdx << "\n";
-    //         float* batchInputs = extractBatch(inputs, indices, startIdx, currentBatchSize, numFeatures);
-    //         float* batchTargets = extractBatch(targets, indices, startIdx, currentBatchSize, 2); // 2 output features
-
-    //         // Forward pass
-    //         std::cout << "[DEBUG] Starting forward pass for batch " << batch + 1 << "\n";
-    //         // float* predictions = forward(batchInputs, currentBatchSize);
-
-    //         // Debugging: Print predictions and targets
-    //         std::cout << "[DEBUG] Batch " << batch + 1 << " predictions (first few):\n";
-    //         float hostPredictions[10]; // Limit to first 10 values for readability
-    //         cudaMemcpy(hostPredictions, predictions, std::min(10, currentBatchSize * 2) * sizeof(float), cudaMemcpyDeviceToHost);
-    //         for (int i = 0; i < std::min(10, currentBatchSize * 2); ++i) {
-    //             std::cout << hostPredictions[i] << " ";
-    //         }
-    //         std::cout << "\n";
-
-    //         std::cout << "[DEBUG] Batch " << batch + 1 << " targets (first few):\n";
-    //         float hostTargets[10]; // Limit to first 10 values for readability
-    //         cudaMemcpy(hostTargets, batchTargets, std::min(10, currentBatchSize * 2) * sizeof(float), cudaMemcpyDeviceToHost);
-    //         for (int i = 0; i < std::min(10, currentBatchSize * 2); ++i) {
-    //             std::cout << hostTargets[i] << " ";
-    //         }
-    //         std::cout << "\n";
-
-    //         // Loss calculation
-    //         std::cout << "[DEBUG] Calculating loss for batch " << batch + 1 << "\n";
-    //         float batchLoss = calculateLoss(predictions, batchTargets, currentBatchSize);
-    //         std::cout << "[DEBUG] Batch " << batch + 1 << " loss: " << batchLoss << "\n";
-    //         totalLoss += batchLoss;
-
-    //         // Backward pass
-    //         std::cout << "[DEBUG] Starting backward pass for batch " << batch + 1 << "\n";
-    //         backward(predictions, batchTargets, currentBatchSize);
-
-    //         // Update weights
-    //         std::cout << "[DEBUG] Applying gradients for batch " << batch + 1 << "\n";
-    //         applyGradients(learningRate);
-
-    //         // Free memory for batch inputs and targets
-    //         std::cout << "[DEBUG] Freeing memory for batch " << batch + 1 << "\n";
-    //         cudaFree(batchInputs);
-    //         cudaFree(batchTargets);
-    //         cudaFree(predictions);
-    //     }
-
-    //     // Log progress for the epoch
-    //     std::cout << "[DEBUG] Epoch " << epoch + 1 << " completed. Average Loss: " << totalLoss / numBatches << "\n";
-    // }
-
-    // std::cout << "[DEBUG] Training completed.\n";
+    std::cout << "Training Configuration:\n"
+              << "  Total possible sequences: " << numPossibleSequences << "\n"
+              << "  Batch size: " << batchSize << "\n"
+              << "  Batches per epoch: " << numBatchesPerEpoch << "\n"
+              << "  Number of epochs: " << numEpochs << "\n";
+    
+    for (int epoch = 0; epoch < numEpochs; ++epoch) {
+        float epochLoss = 0.0f;
+        
+        for (int batch = 0; batch < numBatchesPerEpoch; ++batch) {
+            float batchLoss = 0.0f;
+            
+            for (int i = 0; i < batchSize; i++) {
+                int startIdx;
+                cudaMemcpy(&startIdx, 
+                          &d_indices[batch * batchSize + i], 
+                          sizeof(int), 
+                          cudaMemcpyDeviceToHost);
+                
+                float* sampleInput;
+                cudaMalloc(&sampleInput, inputSize * sizeof(float));
+                
+                // Flatten and copy input sequence
+                for (int day = 0; day < lookback; day++) {
+                    for (int feat = 0; feat < numFeatures; feat++) {
+                        int inputIdx = day * numFeatures + feat;
+                        int dataIdx = (startIdx + day) * numFeatures + feat;
+                        cudaMemcpy(&(inputLayer->getOutput()[inputIdx]), 
+                                 &trainingData[dataIdx],
+                                 sizeof(float),
+                                 cudaMemcpyHostToDevice);
+                    }
+                }
+                
+                forward();
+                
+                // Calculate loss
+                float* predictions = outputLayer->getOutput();
+                float* targets;
+                cudaMalloc(&targets, outputSize * sizeof(float));
+                int dataIdx = (startIdx + lookback) * numFeatures;
+                cudaMemcpy(targets, &trainingData[dataIdx], 
+                          outputSize * sizeof(float), 
+                          cudaMemcpyHostToDevice);
+                
+                batchLoss += LossOps::MeanSquaredError(targets, predictions, 
+                                                      outputSize, true);
+                
+                cudaFree(sampleInput);
+                cudaFree(targets);
+            }
+            
+            epochLoss += batchLoss;
+            
+            if (batch < 5) {  // Print loss for first 5 batches only
+                std::cout << "Batch " << batch << " loss: " << batchLoss / batchSize << std::endl;
+            }
+        }
+        
+        std::cout << "Epoch " << epoch + 1 << "/" << numEpochs 
+                  << " - Average loss: " << epochLoss / (numBatchesPerEpoch * batchSize) << std::endl;
+    }
+    
+    cudaFree(d_indices);
 }
 
 
 
 void NeuralNet::forward() {
-    std::cout << "[DEBUG] Starting forward pass...\n";
-    debugPrintGPUArray("Input", inputLayer->getWeights(), inputLayer->getInputSize(), inputLayer->getOutputSize());
+    
     Layer* currentLayer = inputLayer;
     Layer* nextLayer = currentLayer->getNextLayer();
-    float* currentOutput = currentLayer->getWeights();
+    float* currentOutput = currentLayer->getOutput();
     
-    debugPrintGPUArray("A", currentOutput, currentLayer->getInputSize(), currentLayer->getOutputSize());
-    debugPrintGPUArray("B", nextLayer->getWeights(), nextLayer->getInputSize(), nextLayer->getOutputSize());
-    debugPrintGPUArray("C", nextLayer->getOutput(), currentLayer->getInputSize(), nextLayer->getOutputSize());
-
-    while(currentLayer->getNextLayer() != nullptr) {
+    while(nextLayer != nullptr) {
+        cudaMemset(nextLayer->getOutput(), 0, 
+                  1 * nextLayer->getOutputSize() * sizeof(float));
+        
         MatrixOps::multiply(currentOutput, nextLayer->getWeights(), nextLayer->getOutput(),
-                                     currentLayer->getInputSize(), currentLayer->getOutputSize(),
-                                     nextLayer->getInputSize(), nextLayer->getOutputSize(), true);
-    
-    
-    debugPrintGPUArray("A", currentOutput, currentLayer->getInputSize(), currentLayer->getOutputSize());
-    debugPrintGPUArray("B", nextLayer->getWeights(), nextLayer->getInputSize(), nextLayer->getOutputSize());
-    debugPrintGPUArray("C", nextLayer->getOutput(), currentLayer->getInputSize(), nextLayer->getOutputSize());
+                           1, currentLayer->getOutputSize(), 
+                           nextLayer->getInputSize(), nextLayer->getOutputSize(),
+                           true);
+                           
+        MatrixOps::addBias(nextLayer->getOutput(), nextLayer->getBiases(), nextLayer->getOutput(),
+                           1, nextLayer->getOutputSize(), true);
 
-    currentOutput =  nextLayer->getOutput();
-    currentLayer = currentLayer->getNextLayer();
-    nextLayer = currentLayer->getNextLayer();
+        currentOutput = nextLayer->getOutput();
+        currentLayer = nextLayer;
+        nextLayer = currentLayer->getNextLayer();
     }
-    
-    
 }
 
-    // // Debug: Initial input to the network
-    // std::cout << "[DEBUG] Input to the network (first 5 values): ";
-    // float hostInput[5];
-    // cudaMemcpy(hostInput, input, 5 * sizeof(float), cudaMemcpyDeviceToHost);
-    // cudaDeviceSynchronize();
-    // for (int i = 0; i < 5; ++i) {
-    //     std::cout << hostInput[i] << " ";
-    // }
-    // std::cout << "\n";
-
-    // const float* currentInput = input;
-    // Layer* currentLayer = inputLayer;
-    // float* output = nullptr;
-
-    // int layerIndex = 0;
-
-    // // Debug: Layer-wise iteration
-    // while (currentLayer) {
-    //     std::cout << "[DEBUG] Processing Layer " << layerIndex 
-    //               << " | Input Size: " << currentLayer->getInputSize() 
-    //               << " | Output Size: " << currentLayer->getOutputSize() << "\n";
-
-    //     // Debug: Current input to the layer
-    //     std::cout << "[DEBUG] Input to Layer " << layerIndex << " (first 5 values): ";
-    //     cudaMemcpy(hostInput, currentInput, 5 * sizeof(float), cudaMemcpyDeviceToHost);
-    //     cudaDeviceSynchronize();
-    //     for (int i = 0; i < 5; ++i) {
-    //         std::cout << hostInput[i] << " ";
-    //     }
-    //     std::cout << "\n";
-
-    //     // Perform the forward pass for the current layer
-    //     output = currentLayer->forward(currentInput, batchSize);
-
-    //     // Debug: Output of the layer
-    //     std::cout << "[DEBUG] Output of Layer " << layerIndex << " (first 5 values): ";
-    //     float hostOutput[5];
-    //     cudaMemcpy(hostOutput, output, 5 * sizeof(float), cudaMemcpyDeviceToHost);
-    //     cudaDeviceSynchronize();
-    //     for (int i = 0; i < 5; ++i) {
-    //         std::cout << hostOutput[i] << " ";
-    //     }
-    //     std::cout << "\n";
-
-    //     // Prepare for the next layer
-    //     currentInput = output;
-    //     currentLayer = currentLayer->getNextLayer();
-    //     ++layerIndex;
-    // }
-
-    // // Debug: Final output of the network
-    // std::cout << "[DEBUG] Final output of the network (first 5 values): ";
-    // float finalOutput[5];
-    // cudaMemcpy(finalOutput, output, 5 * sizeof(float), cudaMemcpyDeviceToHost);
-    // cudaDeviceSynchronize();
-    // for (int i = 0; i < 5; ++i) {
-    //     std::cout << finalOutput[i] << " ";
-    // }
-    // std::cout << "\n";
-
-    // std::cout << "[DEBUG] Forward pass completed.\n";
-
-    // return output;
 
 
 
@@ -435,4 +384,42 @@ void NeuralNet::debugPrintGPUArray(const char* name, const float* d_array, int r
 
     // Free host memory
     delete[] h_array;
+}
+
+void NeuralNet::setInput(const float* input, int rows, int cols) {
+    int flattenedSize = rows * cols;
+    
+    // Verify input size matches the network's input layer
+    if (flattenedSize != inputLayer->getOutputSize()) {
+        std::cerr << "Error: Input size mismatch. Expected " << inputLayer->getOutputSize() 
+                  << " but got " << flattenedSize << " (rows: " << rows 
+                  << ", cols: " << cols << ")" << std::endl;
+        return;
+    }
+
+    // Allocate temporary device memory for flattened input
+    float* d_flattenedInput;
+    cudaMalloc(&d_flattenedInput, flattenedSize * sizeof(float));
+
+    // Copy input data to device and flatten it
+    for (int i = 0; i < rows; ++i) {
+        cudaMemcpy(d_flattenedInput + (i * cols), 
+                  input + (i * cols), 
+                  cols * sizeof(float), 
+                  cudaMemcpyHostToDevice);
+    }
+
+    // Copy flattened input to input layer's output buffer
+    cudaMemcpy(inputLayer->getOutput(), 
+               d_flattenedInput, 
+               flattenedSize * sizeof(float), 
+               cudaMemcpyDeviceToDevice);
+
+    // Free temporary device memory
+    cudaFree(d_flattenedInput);
+
+    // Debug print to verify input
+    std::cout << "Set input layer with flattened data (" << rows << "x" << cols 
+              << " -> 1x" << flattenedSize << "):" << std::endl;
+    debugPrintGPUArray("Flattened Input", inputLayer->getOutput(), 1, flattenedSize);
 }

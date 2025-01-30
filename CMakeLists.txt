@@ -36,8 +36,25 @@ set(SOURCES
 # add_executable(LayerTest tests/test_layer.cpp src/Layer.cu src/MatrixOps.cu)
 # target_link_libraries(LayerTest ${CUDA_LIBRARIES})
 
-add_executable(NeuralNetTests tests/test_NN.cpp src/NeuralNet.cu src/Layer.cu src/MatrixOps.cu src/LossOps.cu)
+find_package(CUDA REQUIRED)
+include_directories(${CUDA_INCLUDE_DIRS})
+
+add_executable(NeuralNetTests 
+    tests/test_NN.cpp 
+    src/NeuralNet.cu 
+    src/Layer.cu 
+    src/MatrixOps.cu 
+    src/LossOps.cu
+    src/Utils.cpp)
+set_target_properties(NeuralNetTests PROPERTIES
+    CUDA_SEPARABLE_COMPILATION ON
+)
 target_link_libraries(NeuralNetTests ${CUDA_LIBRARIES})
+
+# Add CUDA compilation flags
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-G;-g)
+endif()
 
 # Ensure consistent runtime libraries
 if(MSVC)
