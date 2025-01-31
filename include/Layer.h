@@ -56,6 +56,8 @@ public:
     int getBatchSize() const;
     void setBatchSize(int bSize);
 
+    std::string getActivationType() const;
+
 };
 
 #endif

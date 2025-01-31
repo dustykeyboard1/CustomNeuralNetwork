@@ -69,7 +69,7 @@ void testNeuralNetInitialization() {
     int lookback = 5;  // Use 5 days of history to predict
     int numPredictions = 2;  // Predict both high and low
     int batchSize = 32;
-    float learningRate = 0.001f;
+    float learningRate = 0.0000001f;
     int numEpochs = 1;
     
     // Define network architecture

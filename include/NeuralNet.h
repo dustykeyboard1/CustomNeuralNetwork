@@ -22,6 +22,8 @@ private:
     void debugPrintGPUArray(const char* name, const float* d_array, int rows, int cols);
     void forward();
 
+    void applyActivation(Layer* currentLayer);
+
 public:
     NeuralNet();
     ~NeuralNet();

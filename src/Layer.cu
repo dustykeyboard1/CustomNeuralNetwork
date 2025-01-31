@@ -13,12 +13,19 @@ Layer::Layer(int inputSize, int outputSize, const std::string& activationType, L
     // This represents the activated outputs of the neurons in this layer
     size_t outputSizeBytes = 1 * outputSize * sizeof(float);
 
+    // Allocate memory for weights, biases, and output
     cudaMalloc(&weights, weightSize);
     cudaMalloc(&biases, biasSize);
     cudaMalloc(&output, outputSizeBytes);
     
-    // Initialize output buffer to zeros
+    // Allocate memory for gradients
+    cudaMalloc(&weightGradients, weightSize);
+    cudaMalloc(&biasGradients, biasSize);
+    
+    // Initialize all buffers to zero
     cudaMemset(output, 0, outputSizeBytes);
+    cudaMemset(weightGradients, 0, weightSize);
+    cudaMemset(biasGradients, 0, biasSize);
 
     // Initialize weights with proper dimensions
     initializeWeights();
@@ -264,4 +271,9 @@ float* Layer::getWeights() const {
 float* Layer::getBiases() const {
     return biases;
 }
+
+std::string Layer::getActivationType() const {
+    return activationType;
+}
+
 
