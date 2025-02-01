@@ -7,7 +7,7 @@ namespace MatrixOps {
     void subtract(const float* A, const float* B, float* C, int rows, int cols, bool isGPU = false);
     void multiply(const float* A, const float* B, float* C, int rows, int cols, int rowsB, int colsB, bool isGPU);
     void divide(const float* A, const float* B, float* C, int rows, int cols);
-    void transpose(const float* A, float* B, int rows, int cols);
+    void transpose(float* output, const float* input, int rows, int cols, bool isGPU);
     void scalerAddition(const float* A, float* B, const float k, int rows, int cols);
     void scalerMultiplication(const float* A, float* B, float k, int rows, int cols, bool isGPU = false);
     void Relu(const float* A, float* B, int rows, int cols, bool isGPU = false);
@@ -23,6 +23,7 @@ namespace MatrixOps {
     void TanhGradient(const float* output, float* gradient, int rows, int cols, bool isGPU = false);
     void SoftmaxGradient(const float* output, float* gradient, int rows, int cols, bool isGPU = false);
     void clipValues(float* input, float min, float max, int rows, int cols, bool isGPU = false);
+    void elementWiseMultiply(const float* A, const float* B, float* C, int rows, int cols, bool isGPU = false);
 }
 
 #endif

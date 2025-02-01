@@ -28,6 +28,13 @@ __global__ void MSEKernel(const float* yTrue, const float* yPred, float* loss, i
     }
 }
 
+__global__ void computeErrorKernel(const float* yTrue, const float* yPred, float* error, int size) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    if (idx < size) {
+        error[idx] = yPred[idx] - yTrue[idx];
+    }
+}
+
 __global__ void crossEntropyLossKernel(const float* yTrue, const float* yPred, float* loss, int numClasses, int batchSize) { 
     extern __shared__ float sharedLoss[];
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -55,7 +62,6 @@ __global__ void crossEntropyLossKernel(const float* yTrue, const float* yPred, f
 
 float LossOps::MeanSquaredError(const float* targets, const float* predictions, int size, bool isGPU) {
     float *d_targets, *d_predictions, *d_loss;
-    float totalLoss = 0.0f;
 
     if (isGPU) {
         // Data is already on GPU, just allocate loss buffer
@@ -125,5 +131,28 @@ float LossOps::gpuCrossEntropyLoss(const float* yTrue, const float* yPred, int b
     return h_loss / batchSize;
 }
 
+void LossOps::computeError(const float* yTrue, const float* yPred, float* error, int size, bool isGPU) {
+    dim3 threadsPerBlock(256);
+    dim3 blocksPerGrid((size + threadsPerBlock.x - 1) / threadsPerBlock.x);
 
+    if (isGPU) {
+        // Data already on GPU, just launch kernel
+        computeErrorKernel<<<blocksPerGrid, threadsPerBlock>>>(yTrue, yPred, error, size);
+    } else {
+        // Handle CPU to GPU case
+        float *d_yTrue, *d_yPred;
+        cudaMalloc(&d_yTrue, size * sizeof(float));
+        cudaMalloc(&d_yPred, size * sizeof(float));
+        
+        cudaMemcpy(d_yTrue, yTrue, size * sizeof(float), cudaMemcpyHostToDevice);
+        cudaMemcpy(d_yPred, yPred, size * sizeof(float), cudaMemcpyHostToDevice);
+        
+        computeErrorKernel<<<blocksPerGrid, threadsPerBlock>>>(d_yTrue, d_yPred, error, size);
+        
+        cudaFree(d_yTrue);
+        cudaFree(d_yPred);
+    }
+    
+    cudaDeviceSynchronize();
+}
 }

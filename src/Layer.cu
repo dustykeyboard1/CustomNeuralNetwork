@@ -18,14 +18,20 @@ Layer::Layer(int inputSize, int outputSize, const std::string& activationType, L
     cudaMalloc(&biases, biasSize);
     cudaMalloc(&output, outputSizeBytes);
     
+    
     // Allocate memory for gradients
     cudaMalloc(&weightGradients, weightSize);
     cudaMalloc(&biasGradients, biasSize);
+    cudaMalloc(&delta, outputSizeBytes);
+    cudaMalloc(&preActivation, outputSizeBytes);
+
     
     // Initialize all buffers to zero
     cudaMemset(output, 0, outputSizeBytes);
     cudaMemset(weightGradients, 0, weightSize);
     cudaMemset(biasGradients, 0, biasSize);
+    cudaMemset(delta, 0, outputSizeBytes);
+    cudaMemset(preActivation, 0, outputSizeBytes);
 
     // Initialize weights with proper dimensions
     initializeWeights();
@@ -196,17 +202,17 @@ void Layer::setBiasGradients(float* gradients) {
     biasGradients = gradients; // Store the new gradients
 }
 
-float* Layer::getWeightsTransposed() {
-    if (weightsTransposed == nullptr) {
-        // Allocate memory for transposed weights
-        size_t transposedSize = inputSize * outputSize * sizeof(float);
-        cudaMalloc(&weightsTransposed, transposedSize);
+// float* Layer::getWeightsTransposed() {
+//     if (weightsTransposed == nullptr) {
+//         // Allocate memory for transposed weights
+//         size_t transposedSize = inputSize * outputSize * sizeof(float);
+//         cudaMalloc(&weightsTransposed, transposedSize);
 
-        // Transpose weights
-        MatrixOps::transpose(weights, weightsTransposed, outputSize, inputSize);
-    }
-    return weightsTransposed;
-}
+//         // Transpose weights
+//         MatrixOps::transpose(weights, weightsTransposed, outputSize, inputSize);
+//     }
+//     return weightsTransposed;
+// }
 
 const float* Layer::getPrevLayerOutput() const {
     if (prevLayer == nullptr) {
@@ -215,17 +221,17 @@ const float* Layer::getPrevLayerOutput() const {
     return prevLayer->getOutput(); // Assumes `getOutput` returns the output of the layer
 }
 
-float* Layer::getPrevLayerOutputTransposed() {
-    if (prevLayerOutputTransposed == nullptr) {
-        // Allocate memory for transposed output
-        size_t transposedSize = batchSize * inputSize * sizeof(float);
-        cudaMalloc(&prevLayerOutputTransposed, transposedSize);
+// float* Layer::getPrevLayerOutputTransposed() {
+//     if (prevLayerOutputTransposed == nullptr) {
+//         // Allocate memory for transposed output
+//         size_t transposedSize = batchSize * inputSize * sizeof(float);
+//         cudaMalloc(&prevLayerOutputTransposed, transposedSize);
 
-        // Transpose the previous layer's output
-        MatrixOps::transpose(getPrevLayerOutput(), prevLayerOutputTransposed, batchSize, inputSize);
-    }
-    return prevLayerOutputTransposed;
-}
+//         // Transpose the previous layer's output
+//         MatrixOps::transpose(getPrevLayerOutput(), prevLayerOutputTransposed, batchSize, inputSize);
+//     }
+//     return prevLayerOutputTransposed;
+// }
 
 
 float* Layer::getOutput() const {
@@ -276,4 +282,12 @@ std::string Layer::getActivationType() const {
     return activationType;
 }
 
+float* Layer::getDelta() {
+    return delta;
+}
+
+
+float* Layer::getPreActivation() {
+    return preActivation;
+}
 

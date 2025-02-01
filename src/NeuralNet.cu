@@ -96,249 +96,108 @@ void NeuralNet::train(const float* trainingData,
                      float learningRate,
                      int numEpochs,
                      const int* targetIndices) {
-    // Add normalization at the start
-    std::cout << "Normalizing input data...\n";
-    
-    // Find max values for each feature
-    std::vector<float> maxValues(numFeatures, std::numeric_limits<float>::min());
-    for (int i = 0; i < numDays; i++) {
-        for (int j = 0; j < numFeatures; j++) {
-            maxValues[j] = std::max(maxValues[j], std::abs(trainingData[i * numFeatures + j]));
-        }
-    }
-    
-    // Create normalized copy of training data
+
     float* normalizedData;
     cudaMallocHost(&normalizedData, numDays * numFeatures * sizeof(float));
-    for (int i = 0; i < numDays; i++) {
-        for (int j = 0; j < numFeatures; j++) {
-            normalizedData[i * numFeatures + j] = trainingData[i * numFeatures + j] / maxValues[j];
-        }
-    }
     
-    std::cout << "Feature normalization factors:\n";
-    for (int i = 0; i < numFeatures; i++) {
-        std::cout << "Feature " << i << ": " << maxValues[i] << "\n";
-    }
-    
-    std::cout << "Training..." << std::endl;
-    int inputSize = lookback * numFeatures;
     int outputSize = numPredictions;
     int numPossibleSequences = numDays - lookback - 1;
     int numBatchesPerEpoch = numPossibleSequences / batchSize;
     
     std::vector<int> shuffledIndices = Utils::generateShuffledIndices(numPossibleSequences);
     
-    // Allocate device memory for indices
     int* d_indices = nullptr;
-    cudaError_t cudaStatus = cudaMalloc(&d_indices, numPossibleSequences * sizeof(int));
-    if (cudaStatus != cudaSuccess) {
-        std::cerr << "cudaMalloc failed: " << cudaGetErrorString(cudaStatus) << std::endl;
-        return;
-    }
-    
-    cudaStatus = cudaMemcpy(d_indices, shuffledIndices.data(), 
-                           numPossibleSequences * sizeof(int), 
-                           cudaMemcpyHostToDevice);
-    if (cudaStatus != cudaSuccess) {
-        std::cerr << "cudaMemcpy failed: " << cudaGetErrorString(cudaStatus) << std::endl;
-        cudaFree(d_indices);
-        return;
-    }
+    cudaMalloc(&d_indices, numPossibleSequences * sizeof(int));
+    cudaMemcpy(d_indices, shuffledIndices.data(), numPossibleSequences * sizeof(int), cudaMemcpyHostToDevice);
 
-    std::cout << "\nTraining Configuration:\n"
-              << "  Total possible sequences: " << numPossibleSequences << "\n"
-              << "  Batch size: " << batchSize << "\n"
-              << "  Batches per epoch: " << numBatchesPerEpoch << "\n"
-              << "  Number of epochs: " << numEpochs << "\n"
-              << "  Learning rate: " << learningRate << "\n\n";
-    
     for (int epoch = 0; epoch < numEpochs; ++epoch) {
-        std::cout << "\nEpoch " << epoch + 1 << "/" << numEpochs << std::endl;
-        float epochLoss = 0.0f;
-        
         for (int batch = 0; batch < numBatchesPerEpoch; ++batch) {
-            float batchLoss = 0.0f;
-            bool isFirstBatch = (batch == 0);
-            
-            // Reset static flags for new batch
-            if (isFirstBatch) {
-                std::cout << "\nProcessing first batch:" << std::endl;
-            }
-            
-            // Reset accumulated gradients at the start of each batch
             Layer* layer = inputLayer->getNextLayer();
             while (layer != nullptr) {
-                
-
-                cudaMemset(layer->getWeightGradients(), 0, 
-                                  layer->getInputSize() * layer->getOutputSize() * sizeof(float));
-                
-                
-                cudaMemset(layer->getBiasGradients(), 0, 
-                                  layer->getOutputSize() * sizeof(float));
-                
+                cudaMemset(layer->getWeightGradients(), 0, layer->getInputSize() * layer->getOutputSize() * sizeof(float));
+                cudaMemset(layer->getBiasGradients(), 0, layer->getOutputSize() * sizeof(float));
                 layer = layer->getNextLayer();
             }
-            // Process each sample in the batch
+
             for (int i = 0; i < batchSize; i++) {
                 int startIdx;
                 cudaMemcpy(&startIdx, &d_indices[batch * batchSize + i], sizeof(int), cudaMemcpyDeviceToHost);
                 
-                // Load input data
-                for (int day = 0; day < lookback; day++) {
-                    for (int feat = 0; feat < numFeatures; feat++) {
-                        cudaMemcpy(&(inputLayer->getOutput()[day * numFeatures + feat]), 
-                                 &normalizedData[(startIdx + day) * numFeatures + feat],
-                                 sizeof(float), cudaMemcpyHostToDevice);
-                    }
-                }
-
-                // Debug print for first sample in batch
-                if (i == 0) {
-                    std::cout << "\nBatch " << batch + 1 << ", First Sample:" << std::endl;
-                    
-                    // Print input
-                    float* h_input = new float[lookback * numFeatures];
-                    cudaMemcpy(h_input, inputLayer->getOutput(), 
-                             lookback * numFeatures * sizeof(float), 
-                             cudaMemcpyDeviceToHost);
-                    std::cout << "Input: ";
-                    for (int j = 0; j < lookback * numFeatures; j++) {
-                        std::cout << h_input[j] << " ";
-                    }
-                    std::cout << std::endl;
-                    delete[] h_input;
-                }
+                // Calculate size of input sequence (lookback days * features)
+                size_t sequenceSize = lookback * numFeatures * sizeof(float);
+                
+                // Copy entire sequence at once
+                cudaMemcpy(inputLayer->getOutput(),
+                          &trainingData[startIdx * numFeatures],  // Start of sequence
+                          sequenceSize,
+                          cudaMemcpyHostToDevice);
 
                 forward();
                 
-                // Get target and calculate loss
                 float* targets;
                 cudaMalloc(&targets, outputSize * sizeof(float));
-                cudaMemcpy(targets, &normalizedData[(startIdx + lookback) * numFeatures], 
+                cudaMemcpy(targets, &trainingData[(startIdx + lookback) * numFeatures], 
                           outputSize * sizeof(float), cudaMemcpyHostToDevice);
-
-                // Debug print for first sample in batch
-                if (i == 0) {
-                    // Print network output
-                    float* h_output = new float[outputSize];
-                    cudaMemcpy(h_output, outputLayer->getOutput(), 
-                             outputSize * sizeof(float), 
-                             cudaMemcpyDeviceToHost);
-                    std::cout << "Network Output: ";
-                    for (int j = 0; j < outputSize; j++) {
-                        std::cout << h_output[j] << " ";
-                    }
-                    std::cout << std::endl;
-                    delete[] h_output;
-
-                    // Print target
-                    float* h_target = new float[outputSize];
-                    cudaMemcpy(h_target, targets, 
-                             outputSize * sizeof(float), 
-                             cudaMemcpyDeviceToHost);
-                    std::cout << "Target: ";
-                    for (int j = 0; j < outputSize; j++) {
-                        std::cout << h_target[j] << " ";
-                    }
-                    std::cout << std::endl;
-                    delete[] h_target;
-                }
-                
-                float sampleLoss = LossOps::MeanSquaredError(targets, outputLayer->getOutput(), 
-                                                           outputSize, false);
-                batchLoss += sampleLoss;
                 
                 backward(outputLayer->getOutput(), targets, 1);
                 cudaFree(targets);
             }
             
-            // Average the accumulated gradients
-            layer = inputLayer->getNextLayer();
-            while (layer != nullptr) {
-                int inputSize = layer->getInputSize();
-                int outputSize = layer->getOutputSize();
-                
-                // Average weight gradients
-                MatrixOps::scalerMultiplication(layer->getWeightGradients(), 
-                                              layer->getWeightGradients(),
-                                              1.0f/batchSize,
-                                              inputSize, outputSize, true);
-                
-                // Average bias gradients
-                MatrixOps::scalerMultiplication(layer->getBiasGradients(), 
-                                              layer->getBiasGradients(),
-                                              1.0f/batchSize,
-                                              1, outputSize, true);
-                
-                layer = layer->getNextLayer();
-            }
-            
-            // Apply averaged gradients
-            applyGradients(learningRate);
-            
-            // Average batch loss
-            batchLoss /= batchSize;
-            epochLoss += batchLoss;
-            
-            if ((batch + 1) % 10 == 0 || batch == 0) {
-                std::cout << "Batch " << batch + 1 << "/" << numBatchesPerEpoch 
-                         << " - Loss: " << batchLoss/batchSize << std::endl;
-            }
+            applyGradients(learningRate, batchSize);
         }
-        
-        epochLoss /= numBatchesPerEpoch;
-        std::cout << "Epoch " << epoch + 1 << " average loss: " << epochLoss << std::endl;
     }
     
     cudaFree(d_indices);
-    cudaFreeHost(normalizedData);
+
 }
 
 
 
 void NeuralNet::forward() {
-    Layer* currentLayer = inputLayer;
-    Layer* nextLayer = currentLayer->getNextLayer();
-    float* currentOutput = currentLayer->getOutput();
+    Layer* currentLayer = inputLayer->getNextLayer();
     int layerIndex = 0;
     
     // Only print for first sample of batch
     static bool firstSample = true;
-    
-    while(nextLayer != nullptr) {
-        cudaMemset(nextLayer->getOutput(), 0, 
-                  1 * nextLayer->getOutputSize() * sizeof(float));
+    Layer* prevLayer = nullptr;
+    while(currentLayer->getNextLayer() != nullptr) {
+        prevLayer = currentLayer->getPrevLayer();
+        cudaMemset(currentLayer->getOutput(), 0, 
+                  1 * currentLayer->getOutputSize() * sizeof(float));
         
-        MatrixOps::multiply(currentOutput, nextLayer->getWeights(), nextLayer->getOutput(),
-                           1, currentLayer->getOutputSize(), 
-                           nextLayer->getInputSize(), nextLayer->getOutputSize(),
+        MatrixOps::multiply(prevLayer->getOutput(), currentLayer->getWeights(), currentLayer->getOutput(),
+                           prevLayer->getInputSize(), prevLayer->getOutputSize(), 
+                           currentLayer->getInputSize(), currentLayer->getOutputSize(),
                            true);
-                           
-        MatrixOps::addBias(nextLayer->getOutput(), nextLayer->getBiases(), nextLayer->getOutput(),
-                           1, nextLayer->getOutputSize(), true);
-        
-        if (nextLayer != outputLayer) {
-            applyActivation(nextLayer);
+
+        MatrixOps::addBias(prevLayer->getOutput(), currentLayer->getBiases(), currentLayer->getOutput(),
+                           1, currentLayer->getOutputSize(), true);
+
+        if (currentLayer->getNextLayer() != outputLayer) {
+            cudaMemcpy(currentLayer->getPreActivation(), currentLayer->getOutput(), 
+                      currentLayer->getOutputSize() * sizeof(float), 
+                      cudaMemcpyDeviceToDevice);
+            applyActivation(currentLayer);
         }
 
+
+
+
         if (firstSample) {
-            float* h_output = new float[nextLayer->getOutputSize()];
-            cudaMemcpy(h_output, nextLayer->getOutput(), 
-                      nextLayer->getOutputSize() * sizeof(float), 
+            float* h_output = new float[currentLayer->getOutputSize()];
+            cudaMemcpy(h_output, currentLayer->getOutput(), 
+                      currentLayer->getOutputSize() * sizeof(float), 
                       cudaMemcpyDeviceToHost);
             std::cout << "Layer " << layerIndex << " output: ";
-            for (int i = 0; i < nextLayer->getOutputSize(); i++) {
+            for (int i = 0; i < currentLayer->getOutputSize(); i++) {
                 std::cout << h_output[i] << " ";
             }
             std::cout << std::endl;
             delete[] h_output;
         }
 
-        currentOutput = nextLayer->getOutput();
-        currentLayer = nextLayer;
-        nextLayer = currentLayer->getNextLayer();
+        
+        currentLayer = currentLayer->getNextLayer();
         layerIndex++;
     }
     firstSample = false;
@@ -360,6 +219,25 @@ void NeuralNet::applyActivation(Layer* currentLayer) {
     }
 }
 
+void NeuralNet::applyAntiActivation(Layer* currentLayer) {
+    if (currentLayer->getActivationType() == "relu") {
+        MatrixOps::ReluGradient(currentLayer->getPreActivation(), currentLayer->getPreActivation(),
+                                 1, currentLayer->getOutputSize(), true);
+    } else if (currentLayer->getActivationType() == "sigmoid") {
+        MatrixOps::SigmoidGradient(currentLayer->getPreActivation(), currentLayer->getPreActivation(),
+                                    1, currentLayer->getOutputSize(), true);
+    } else if (currentLayer->getActivationType() == "tanh") {
+        MatrixOps::TanhGradient(currentLayer->getPreActivation(), currentLayer->getPreActivation(),
+                                 1, currentLayer->getOutputSize(), true);
+    } else if (currentLayer->getActivationType() == "softmax") {
+        // Softmax derivative is handled differently during loss calculation
+        // No explicit derivative calculation needed here
+        return;
+    }
+
+}
+
+
 
 
 float NeuralNet::calculateLoss(const float* predictions, const float* targets, int batchSize) {
@@ -370,106 +248,86 @@ float NeuralNet::calculateLoss(const float* predictions, const float* targets, i
 
 
 void NeuralNet::backward(const float* predictions, const float* targets, int batchSize) {
-    static bool firstSample = true;
-    if (firstSample) {
-        std::cout << "\nBackward Pass Details:" << std::endl;
-        float* h_pred = new float[outputLayer->getOutputSize()];
-        float* h_targ = new float[outputLayer->getOutputSize()];
-        cudaMemcpy(h_pred, predictions, outputLayer->getOutputSize() * sizeof(float), cudaMemcpyDeviceToHost);
-        cudaMemcpy(h_targ, targets, outputLayer->getOutputSize() * sizeof(float), cudaMemcpyDeviceToHost);
-        
-        std::cout << "Error calculation:" << std::endl;
-        for (int i = 0; i < outputLayer->getOutputSize(); i++) {
-            std::cout << "  Output " << i << ":" << std::endl;
-            std::cout << "    Prediction: " << h_pred[i] << std::endl;
-            std::cout << "    Target: " << h_targ[i] << std::endl;
-            std::cout << "    Error: " << h_pred[i] - h_targ[i] << std::endl;
-        }
-        delete[] h_pred;
-        delete[] h_targ;
-    }
-
-    // Calculate output gradient (2 * error for MSE loss)
-    float* outputGradient;
-    cudaMalloc(&outputGradient, outputLayer->getOutputSize() * sizeof(float));
-    MatrixOps::subtract(predictions, targets, outputGradient, 
-                       1, outputLayer->getOutputSize(), true);
-    MatrixOps::scalerMultiplication(outputGradient, outputGradient, 
-                                   2.0f, 1, outputLayer->getOutputSize(), true);
-
-    // Propagate gradients through the network
     Layer* currentLayer = outputLayer;
-    float* currentGradient = outputGradient;
+    float* dlossW = nullptr;
+    float* wT;
+    float* aT;
+    float* wT_current;
     
     while (currentLayer != inputLayer) {
         Layer* prevLayer = currentLayer->getPrevLayer();
+        float* delta;
+        cudaMalloc(&delta, currentLayer->getOutputSize() * sizeof(float));
+        cudaMemset(delta, 0, currentLayer->getOutputSize() * sizeof(float));
+
+        if (currentLayer == outputLayer) {
+            std::cout << "Output layer" << std::endl;
+            LossOps::computeError(targets, predictions, currentLayer->getDelta(), currentLayer->getOutputSize(), true);
+            applyAntiActivation(currentLayer);
+            MatrixOps::elementWiseMultiply(currentLayer->getPreActivation(), currentLayer->getDelta(), currentLayer->getDelta(), 
+                                            1, currentLayer->getOutputSize(), true);
+
+            std::cout << "point a" << std::endl;
+            cudaMalloc(&aT, currentLayer->getNextLayer()->getOutputSize() * sizeof(float));
+            std::cout << "point a.1" << std::endl;
+            cudaMemcpy(aT, currentLayer->getNextLayer()->getPreActivation(), currentLayer->getNextLayer()->getOutputSize() * sizeof(float), cudaMemcpyDeviceToDevice);
+            std::cout << "point a.2" << std::endl;
+
+
+            cudaMalloc(&dlossW, currentLayer->getInputSize() * currentLayer->getOutputSize() * sizeof(float));
+            cudaMemset(dlossW, 0, currentLayer->getInputSize() * currentLayer->getOutputSize() * sizeof(float));
+            std::cout << "point b" << std::endl;
+            MatrixOps::multiply(aT, currentLayer->getDelta(), dlossW, 
+                                    currentLayer->getPrevLayer()->getOutputSize(),1,
+                                    1, currentLayer->getOutputSize(), true);
+            std::cout << "point c" << std::endl;
+            MatrixOps::add(currentLayer->getWeightGradients(), dlossW, currentLayer->getWeightGradients(), 
+                           currentLayer->getInputSize(), currentLayer->getOutputSize(), true);
+            std::cout << "point d" << std::endl;
+
+            MatrixOps::add(currentLayer->getBiasGradients(), currentLayer->getDelta(), currentLayer->getBiasGradients(), 
+                          1, currentLayer->getOutputSize(), true);
+            std::cout << "point e" << std::endl;
+
+            cudaFree(dlossW);
+            cudaFree(aT);
+            cudaFree(delta);
+
+        } else {
+            std::cout << "Hidden layer" << std::endl;
+            cudaMalloc(&wT, currentLayer->getNextLayer()->getInputSize() * currentLayer->getNextLayer()->getOutputSize() * sizeof(float));
+            cudaMemcpy(wT, currentLayer->getNextLayer()->getWeights(), currentLayer->getNextLayer()->getInputSize() * currentLayer->getNextLayer()->getOutputSize() * sizeof(float), cudaMemcpyDeviceToDevice);
+            MatrixOps::transpose(wT, currentLayer->getNextLayer()->getWeights(), currentLayer->getNextLayer()->getInputSize(), currentLayer->getNextLayer()->getOutputSize(), true);
         
-        // Scale down gradients if they're too large
-        float* h_grad = new float[currentLayer->getOutputSize()];
-        cudaMemcpy(h_grad, currentGradient, 
-                  currentLayer->getOutputSize() * sizeof(float), 
-                  cudaMemcpyDeviceToHost);
-        
-        float maxGrad = 0.0f;
-        for (int i = 0; i < currentLayer->getOutputSize(); i++) {
-            maxGrad = std::max(maxGrad, std::abs(h_grad[i]));
-        }
-        
-        if (maxGrad > 1.0f) {
-            float scale = 1.0f / maxGrad;
-            MatrixOps::scalerMultiplication(currentGradient, currentGradient, 
-                                          scale, 1, currentLayer->getOutputSize(), true);
-        }
-        delete[] h_grad;
-        
-        // Compute weight gradients
-        MatrixOps::multiply(prevLayer->getOutput(), currentGradient,
-                          currentLayer->getWeightGradients(),
-                          1, prevLayer->getOutputSize(),
-                          prevLayer->getOutputSize(), currentLayer->getOutputSize(),
-                          true);
-        
-        // Compute bias gradients
-        cudaMemcpy(currentLayer->getBiasGradients(), currentGradient,
-                  currentLayer->getOutputSize() * sizeof(float),
-                  cudaMemcpyDeviceToDevice);
-        
-        if (firstSample) {
-            float* h_weightGrad = new float[5];  // Just show first 5
-            cudaMemcpy(h_weightGrad, currentLayer->getWeightGradients(),
-                      5 * sizeof(float), cudaMemcpyDeviceToHost);
+
+            MatrixOps::multiply(currentLayer->getNextLayer()->getDelta(), wT, currentLayer->getDelta(), 
+                               1, currentLayer->getNextLayer()->getOutputSize(), 
+                               currentLayer->getNextLayer()->getOutputSize(), currentLayer->getNextLayer()->getInputSize(), true);
+            applyAntiActivation(currentLayer);
+
+            MatrixOps::elementWiseMultiply(currentLayer->getPreActivation(), currentLayer->getDelta(), currentLayer->getDelta(), 
+                                            1, currentLayer->getNextLayer()->getInputSize(), true);
             
-            std::cout << "\nLayer weight gradients:" << std::endl;
-            std::cout << "  First 5 gradients: ";
-            for (int i = 0; i < 5; i++) {
-                std::cout << h_weightGrad[i] << " ";
-            }
-            std::cout << std::endl;
+            cudaMalloc(&wT_current, currentLayer->getInputSize() * currentLayer->getOutputSize() * sizeof(float));
+            cudaMemcpy(wT_current, currentLayer->getWeights(), currentLayer->getInputSize() * currentLayer->getOutputSize() * sizeof(float), cudaMemcpyDeviceToDevice);
+            MatrixOps::transpose(wT_current, currentLayer->getWeights(), currentLayer->getInputSize(), currentLayer->getOutputSize(), true);
             
-            delete[] h_weightGrad;
+            cudaMalloc(&dlossW, currentLayer->getInputSize() * currentLayer->getOutputSize() * sizeof(float));
+            cudaMemset(dlossW, 0, currentLayer->getInputSize() * currentLayer->getOutputSize() * sizeof(float));
+            MatrixOps::multiply(currentLayer->getDelta(), wT_current, dlossW, 
+                                currentLayer->getOutputSize(), 1, 
+                                currentLayer->getInputSize(), currentLayer->getOutputSize(), true);
+            cudaFree(wT_current);
+            MatrixOps::add(currentLayer->getWeightGradients(), dlossW, currentLayer->getWeightGradients(), 
+                           currentLayer->getInputSize(), currentLayer->getOutputSize(), true);
+            MatrixOps::add(currentLayer->getBiasGradients(), currentLayer->getDelta(), currentLayer->getBiasGradients(), 
+                          1, currentLayer->getOutputSize(), true);
+            cudaFree(dlossW);
+            cudaFree(wT);
+            cudaFree(delta);
         }
-        
-        // Compute next gradient for backprop
-        float* nextGradient;
-        cudaMalloc(&nextGradient, prevLayer->getOutputSize() * sizeof(float));
-        MatrixOps::multiply(currentGradient, currentLayer->getWeights(),
-                          nextGradient,
-                          1, currentLayer->getOutputSize(),
-                          currentLayer->getOutputSize(), prevLayer->getOutputSize(),
-                          true);
-        
-        if (currentGradient != outputGradient) {
-            cudaFree(currentGradient);
-        }
-        currentGradient = nextGradient;
         currentLayer = prevLayer;
     }
-
-    if (firstSample) {
-        firstSample = false;
-    }
-    
-    cudaFree(outputGradient);
 }
 
 
@@ -538,51 +396,59 @@ void NeuralNet::extractBatch(const float* fullData, const std::vector<int>& indi
     // return batchData; // Return device pointer to the batch
 }
 
-void NeuralNet::applyGradients(float learningRate) {
-    static bool firstBatch = true;
+void NeuralNet::applyGradients(float learningRate, int batchSize) {
     Layer* currentLayer = outputLayer;
-    int layerIdx = 0;
     
     while (currentLayer != inputLayer) {
-        if (firstBatch) {
-            float* h_weights = new float[currentLayer->getInputSize() * currentLayer->getOutputSize()];
-            cudaMemcpy(h_weights, currentLayer->getWeights(), 
-                      currentLayer->getInputSize() * currentLayer->getOutputSize() * sizeof(float), 
-                      cudaMemcpyDeviceToHost);
-            
-            std::cout << "Layer " << layerIdx << " weight update:" << std::endl;
-            std::cout << "  Before max: " << *std::max_element(h_weights, 
-                                        h_weights + currentLayer->getInputSize() * currentLayer->getOutputSize()) << std::endl;
-            
-            // Apply gradients
-            MatrixOps::scalerMultiplication(currentLayer->getWeightGradients(), 
-                                          currentLayer->getWeightGradients(),
-                                          -learningRate,
-                                          currentLayer->getInputSize(), 
-                                          currentLayer->getOutputSize(), 
-                                          true);
-            
-            MatrixOps::add(currentLayer->getWeights(), 
-                          currentLayer->getWeightGradients(), 
-                          currentLayer->getWeights(),
-                          currentLayer->getInputSize(), 
-                          currentLayer->getOutputSize(), 
-                          true);
-            
-            cudaMemcpy(h_weights, currentLayer->getWeights(), 
-                      currentLayer->getInputSize() * currentLayer->getOutputSize() * sizeof(float), 
-                      cudaMemcpyDeviceToHost);
-            
-            std::cout << "  After max: " << *std::max_element(h_weights, 
-                                       h_weights + currentLayer->getInputSize() * currentLayer->getOutputSize()) << std::endl;
-            
-            delete[] h_weights;
+        // Scale gradients by learning rate
+        MatrixOps::scalerMultiplication(currentLayer->getWeightGradients(), 
+                                      currentLayer->getWeightGradients(),
+                                      1/batchSize,
+                                      currentLayer->getInputSize(), 
+                                      currentLayer->getOutputSize(), 
+                                      true);
+        
+        MatrixOps::scalerMultiplication(currentLayer->getBiasGradients(), 
+                                      currentLayer->getBiasGradients(),
+                                      1/batchSize,
+                                      1, 
+                                      currentLayer->getOutputSize(), 
+                                      true);
+
+        // Debug: Print weight and bias gradients
+        float* h_weightGrads = new float[currentLayer->getInputSize() * currentLayer->getOutputSize()];
+        float* h_biasGrads = new float[currentLayer->getOutputSize()];
+        
+        cudaMemcpy(h_weightGrads, currentLayer->getWeightGradients(), 
+                  currentLayer->getInputSize() * currentLayer->getOutputSize() * sizeof(float), 
+                  cudaMemcpyDeviceToHost);
+        cudaMemcpy(h_biasGrads, currentLayer->getBiasGradients(),
+                  currentLayer->getOutputSize() * sizeof(float),
+                  cudaMemcpyDeviceToHost);
+
+        std::cout << "Weight gradients (first 5): ";
+        for (int i = 0; i < 5; i++) {
+            std::cout << h_weightGrads[i] << " ";
         }
+        std::cout << "\nBias gradients (first 5): ";
+        for (int i = 0; i < 5; i++) {
+            std::cout << h_biasGrads[i] << " ";
+        }
+        std::cout << std::endl;
+
+        delete[] h_weightGrads;
+        delete[] h_biasGrads;
+        // Update weights with scaled gradients
+
+        MatrixOps::add(currentLayer->getWeights(), 
+                      currentLayer->getWeightGradients(), 
+                      currentLayer->getWeights(),
+                      currentLayer->getInputSize(), 
+                      currentLayer->getOutputSize(), 
+                      true);
         
         currentLayer = currentLayer->getPrevLayer();
-        layerIdx++;
     }
-    firstBatch = false;
 }
 
 void NeuralNet::debugPrintGPUArray(const char* name, const float* d_array, int rows, int cols) {

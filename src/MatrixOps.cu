@@ -50,17 +50,14 @@ __global__ void DivideKernel(const float* A, const float* B, float* C, int rows,
     }
 }
 
-__global__ void TransposeKernel(const float* A, float* B, int rows, int cols) {
-    int row = blockIdx.y * blockDim.y + threadIdx.y;
-    int col = blockIdx.x * blockDim.x + threadIdx.x;
+__global__ void transposeKernel(float* output, const float* input, int rows, int cols) {
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int idy = blockIdx.y * blockDim.y + threadIdx.y;
     
-    if (row < rows && col < cols) {
-        int idx = row * cols + col; 
-        int tranposed_idx = col * rows + row;
-        B[tranposed_idx] = A[idx];
+    if (idx < cols && idy < rows) {
+        output[idx * rows + idy] = input[idy * cols + idx];
     }
-
-} 
+}
 
 __global__ void ScalerAddKernel(const float* A, float* B, float k, int rows, int cols) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
@@ -224,6 +221,16 @@ __global__ void clipValuesKernel(float* input, float min, float max, int rows, i
     }
 }
 
+__global__ void elementWiseMultiplyKernel(const float* A, const float* B, float* C, int rows, int cols) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int idx = row * cols + col;
+    
+    if (row < rows && col < cols) {
+        C[idx] = A[idx] * B[idx];
+    }
+}
+
 void MatrixOps::add(const float* A, const float* B, float* C, int rows, int cols, bool isGPU) {
     dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
@@ -353,26 +360,29 @@ void divide(const float* A, const float* B, float* C, int rows, int cols) {
 
 }
 
-void transpose(const float* A, float* B, int rows, int cols) {
-    size_t sizeA = rows * cols * sizeof(float);
-    size_t sizeB = cols * rows * sizeof(float);
+void MatrixOps::transpose(float* output, const float* input, int rows, int cols, bool isGPU) {
+    dim3 threadsPerBlock(16, 16);  // 2D block for matrix operations
+    dim3 blocksPerGrid((cols + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                       (rows + threadsPerBlock.y - 1) / threadsPerBlock.y);
 
-    float *d_A, *d_B;
-    cudaMalloc(&d_A, sizeA);
-    cudaMalloc(&d_B, sizeB);
-
-    cudaMemcpy(d_A, A, sizeA, cudaMemcpyHostToDevice);
-    cudaMemcpy(d_B, B, sizeB, cudaMemcpyHostToDevice);
-
-    dim3 threadsPerBlock(16, 16);
-    dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
-
-    TransposeKernel<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, rows, cols); 
-
-    cudaMemcpy(B, d_B, sizeB, cudaMemcpyDeviceToHost); 
-    cudaFree(d_A);
-    cudaFree(d_B);
+    if (isGPU) {
+        // Data already on GPU, just launch kernel
+        transposeKernel<<<blocksPerGrid, threadsPerBlock>>>(output, input, rows, cols);
+    } else {
+        // Handle CPU to GPU case
+        float* d_input;
+        cudaMalloc(&d_input, rows * cols * sizeof(float));
+        cudaMemcpy(d_input, input, rows * cols * sizeof(float), cudaMemcpyHostToDevice);
+        
+        transposeKernel<<<blocksPerGrid, threadsPerBlock>>>(output, d_input, rows, cols);
+        
+        cudaFree(d_input);
+    }
+    
+    cudaDeviceSynchronize();
 }
+
+
 
 void scalerAddition(const float* A, float* B, const float k, int rows, int cols) {
     size_t size = rows * cols * sizeof(float);
@@ -736,6 +746,36 @@ void MatrixOps::clipValues(float* input, float min, float max, int rows, int col
         
         cudaMemcpy(input, d_input, rows * cols * sizeof(float), cudaMemcpyDeviceToHost);
         cudaFree(d_input);
+    }
+    cudaDeviceSynchronize();
+}
+
+void MatrixOps::elementWiseMultiply(const float* A, const float* B, float* C, int rows, int cols, bool isGPU) {
+    dim3 threadsPerBlock(16, 16);
+    dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
+
+    if (isGPU) {
+        // Data already on GPU, just launch kernel
+        elementWiseMultiplyKernel<<<blocksPerGrid, threadsPerBlock>>>(A, B, C, rows, cols);
+    } else {
+        // Handle CPU to GPU case
+        size_t size = rows * cols * sizeof(float);
+        float *d_A, *d_B, *d_C;
+        
+        cudaMalloc(&d_A, size);
+        cudaMalloc(&d_B, size);
+        cudaMalloc(&d_C, size);
+        
+        cudaMemcpy(d_A, A, size, cudaMemcpyHostToDevice);
+        cudaMemcpy(d_B, B, size, cudaMemcpyHostToDevice);
+        
+        elementWiseMultiplyKernel<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_B, d_C, rows, cols);
+        
+        cudaMemcpy(C, d_C, size, cudaMemcpyDeviceToHost);
+        
+        cudaFree(d_A);
+        cudaFree(d_B);
+        cudaFree(d_C);
     }
     cudaDeviceSynchronize();
 }

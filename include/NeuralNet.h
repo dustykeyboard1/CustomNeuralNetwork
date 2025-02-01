@@ -18,11 +18,12 @@ private:
     float* computeBiasGradient(Layer* currentLayer, const float* dLoss, int batchSize);
     void extractBatch(const float* fullData, const std::vector<int>& indices, 
                                int startIdx, int batchSize, int numFeatures);
-    void applyGradients(float learningRate);
+    void applyGradients(float learningRate, int batchSize);
     void debugPrintGPUArray(const char* name, const float* d_array, int rows, int cols);
     void forward();
 
     void applyActivation(Layer* currentLayer);
+    void applyAntiActivation(Layer* currentLayer);
 
 public:
     NeuralNet();

@@ -15,8 +15,11 @@ private:
 
     float* weightGradients = nullptr;
     float* biasGradients = nullptr;
+    float* delta = nullptr;
+    float* preActivation = nullptr;
     float* weightsTransposed = nullptr;
     float* prevLayerOutputTransposed = nullptr;
+
 
     std::string activationType;
 
@@ -58,6 +61,8 @@ public:
 
     std::string getActivationType() const;
 
+    float* getDelta();
+    float* getPreActivation();
 };
 
 #endif
