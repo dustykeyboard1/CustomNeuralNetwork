@@ -90,28 +90,33 @@ void NeuralNet::train(const float* trainingData,
                      float learningRate,
                      int numEpochs,
                      float clipThreshold,
+                     float decayRate,
                      const int* targetIndices) {
-
-
-    // Setup training data and variables
+    // Split the data into training, validation, and test sets
+    DataSplit split = Utils::splitDataset(trainingData, numDays, numFeatures);
+    
+    // Use split.trainData for training
     float* standardizedData;
-    cudaMallocHost(&standardizedData, numDays * numFeatures * sizeof(float));
-    standardizeData(trainingData, standardizedData, numDays, numFeatures);
+    cudaMallocHost(&standardizedData, split.trainSize * numFeatures * sizeof(float));
+    standardizeData(split.trainData, standardizedData, split.trainSize, numFeatures);
     
     int outputSize = numPredictions;
-    int numPossibleSequences = numDays - lookback - 1;
+    int numPossibleSequences = numDays - lookback - 1;  
     int numBatchesPerEpoch = numPossibleSequences / batchSize;
     float loss;
     float epochLoss;
     
     std::vector<float> epochLosses;
-    std::vector<int> shuffledIndices = Utils::generateShuffledIndices(numPossibleSequences);
+    std::vector<float> validationLosses;
+    std::vector<int> shuffledIndices = Utils::generateShuffledIndices(lookback, numDays - 1);
     
     int* d_indices = nullptr;
     cudaMalloc(&d_indices, numPossibleSequences * sizeof(int));
     cudaMemcpy(d_indices, shuffledIndices.data(), numPossibleSequences * sizeof(int), cudaMemcpyHostToDevice);
 
     // Training epochs
+    float currentLearningRate = learningRate;
+    
     for (int epoch = 0; epoch < numEpochs; ++epoch) {
         epochLoss = 0.0f;
         for (int batch = 0; batch < numBatchesPerEpoch; ++batch) {
@@ -126,40 +131,59 @@ void NeuralNet::train(const float* trainingData,
             // Process each sample in batch
             loss = 0.0f;
             for (int i = 0; i < batchSize; i++) {
-                int startIdx;
-                cudaMemcpy(&startIdx, &d_indices[batch * batchSize + i], sizeof(int), cudaMemcpyDeviceToHost);
+                int currentT;
+                cudaMemcpy(&currentT, &d_indices[batch * batchSize + i], sizeof(int), cudaMemcpyDeviceToHost);
                 
-                size_t sequenceSize = lookback * numFeatures * sizeof(float);
-                cudaMemcpy(inputLayer->getOutput(),
-                          &standardizedData[startIdx * numFeatures],
-                          sequenceSize,
-                          cudaMemcpyHostToDevice);
+                // Get sequence [T-lookback+1, ..., T]
+                for(int step = 0; step < lookback; step++) {
+                    int timeIdx = currentT - (lookback - 1) + step;  // starts at T-4, ends at T
+                    cudaMemcpy(inputLayer->getOutput() + (step * numFeatures),
+                              &standardizedData[timeIdx * numFeatures],
+                              numFeatures * sizeof(float),
+                              cudaMemcpyHostToDevice);
+                }
 
                 forward();
                 
+                // Get targets from T+1, using targetIndices to select specific features
                 float* targets;
-                cudaMalloc(&targets, outputSize * sizeof(float));
-                cudaMemcpy(targets, &standardizedData[(startIdx + lookback) * numFeatures], 
-                          outputSize * sizeof(float), cudaMemcpyHostToDevice);
+                cudaMalloc(&targets, numPredictions * sizeof(float));
+                
+                for(int t = 0; t < numPredictions; t++) {
+                    int futureIdx = (currentT + 1) * numFeatures + targetIndices[t]; 
+                    cudaMemcpy(&targets[t], 
+                              &standardizedData[futureIdx], 
+                              sizeof(float), 
+                              cudaMemcpyHostToDevice);
+                }
                 
                 loss += calculateLoss(outputLayer->getOutput(), targets, 1);
                 backward(outputLayer->getOutput(), targets, 1);
                 cudaFree(targets);
             }
-            
-            applyGradients(learningRate, batchSize, clipThreshold);
+            applyGradients(currentLearningRate, batchSize, clipThreshold);
             epochLoss += loss;
         }
         
+        currentLearningRate = learningRate * exp(-decayRate * float(epoch));
+        
+
         float avgEpochLoss = epochLoss/(float(numBatchesPerEpoch) * float(batchSize));
         epochLosses.push_back(avgEpochLoss);
         Utils::printProgress(epoch + 1, numEpochs, avgEpochLoss);
+        float validationLoss = validate(split.validData, split.validSize, numFeatures, lookback, targetIndices, outputSize);
+        validationLosses.push_back(validationLoss);
     }
     
     Utils::writeLossToFile(epochLosses, "C:/Users/Michael/Coding/C++/CustomNeuralNetwork/LossData/training_loss.csv");
+    Utils::writeLossToFile(validationLosses, "C:/Users/Michael/Coding/C++/CustomNeuralNetwork/LossData/validation_loss.csv");
 
     cudaFree(d_indices);
     cudaFreeHost(standardizedData);
+
+    delete[] split.trainData;
+    delete[] split.validData;
+    delete[] split.testData;
 }
 
 // Forward pass through network
@@ -415,4 +439,43 @@ void NeuralNet::setInput(const float* input, int rows, int cols) {
     std::cout << "Set input layer with flattened data (" << rows << "x" << cols 
               << " -> 1x" << flattenedSize << "):" << std::endl;
     debugPrintGPUArray("Flattened Input", inputLayer->getOutput(), 1, flattenedSize);
+}
+
+float NeuralNet::validate(const float* validationData, int numSamples, int numFeatures, int lookback, const int* targetIndices, int numPredictions) {
+    float totalLoss = 0.0f;
+    float* standardizedData;
+    cudaMallocHost(&standardizedData, numSamples * numFeatures * sizeof(float));
+    standardizeData(validationData, standardizedData, numSamples, numFeatures);
+
+    // Start from lookback to ensure we have enough history
+    for (int currentT = lookback; currentT < numSamples - 1; currentT++) {
+        for(int step = 0; step < lookback; step++) {
+            int timeIdx = currentT - (lookback - 1) + step;
+            cudaMemcpy(inputLayer->getOutput() + (step * numFeatures),
+                      &standardizedData[timeIdx * numFeatures],
+                      numFeatures * sizeof(float),
+                      cudaMemcpyHostToDevice);
+        }
+
+        forward();
+
+        // Get targets from T+1 using targetIndices
+        float* targets;
+        cudaMalloc(&targets, numPredictions * sizeof(float));
+        
+        for(int t = 0; t < numPredictions; t++) {
+            int futureIdx = (currentT + 1) * numFeatures + targetIndices[t];
+            cudaMemcpy(&targets[t], 
+                      &standardizedData[futureIdx], 
+                      sizeof(float), 
+                      cudaMemcpyHostToDevice);
+        }
+
+        totalLoss += calculateLoss(outputLayer->getOutput(), targets, 1);
+        cudaFree(targets);
+    }
+
+    cudaFreeHost(standardizedData);
+    int numValidSamples = numSamples - lookback - 1; 
+    return totalLoss / numValidSamples;
 }

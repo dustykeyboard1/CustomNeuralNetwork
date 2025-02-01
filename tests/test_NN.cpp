@@ -5,7 +5,7 @@
 #include <vector>
 #include <string>
 #include <filesystem>
-
+#include <cmath>
 std::vector<float> loadCSV(const std::string& filename, int& numDays, int& numFeatures) {
     std::ifstream file(filename);
     if (!file.is_open()) {
@@ -71,8 +71,9 @@ void testNeuralNetInitialization() {
     int batchSize = 64;
     float learningRate = 0.001f;
     int numEpochs = 50;
-    float clipThreshold = 2.0f;
-    
+    float clipThreshold = 3.0f;
+    float decayRate = std::log(2.0f) / float(numEpochs);
+
     // Define network architecture
     int hiddenLayers = 5;
     int neurons[] = {64, 32, 16, 8, 4};  // Two hidden layers with 8 and 4 neurons
@@ -94,6 +95,7 @@ void testNeuralNetInitialization() {
              learningRate,
              numEpochs,
              clipThreshold,
+             decayRate,
              targetIndices.data()); // Pass the target indices
 }
 

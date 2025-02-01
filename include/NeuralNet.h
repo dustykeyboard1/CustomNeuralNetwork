@@ -43,6 +43,8 @@ private:
     // Debug utilities
     void debugPrintGPUArray(const char* name, const float* d_array, int rows, int cols);
 
+    float validate(const float* validationData, int numSamples, int numFeatures, int lookback, const int* targetIndices, int numPredictions);
+
 public:
     // Constructor/Destructor
     NeuralNet();
@@ -59,6 +61,7 @@ public:
                float learningRate, 
                int numEpochs,
                float clipThreshold,
+               float decayRate,
                const int* targetIndices);
 
     // Network access methods
