@@ -57,7 +57,7 @@ std::vector<float> loadCSV(const std::string& filename, int& numDays, int& numFe
 
 void testNeuralNetInitialization() {
     int numDays, numFeatures;
-    std::vector<float> trainingData = loadCSV("C:/Users/Michael/Downloads/HistoricalData_1738275321928.csv", numDays, numFeatures);
+    std::vector<float> trainingData = loadCSV("C:/Users/Michael/Downloads/HistoricalData_1738438947373.csv", numDays, numFeatures);
     
     // Print some debug info
     std::cout << "Loaded " << numDays << " days of data with " << numFeatures << " features each." << std::endl;
@@ -68,9 +68,10 @@ void testNeuralNetInitialization() {
     // Example configuration
     int lookback = 5;  // Use 5 days of history to predict
     int numPredictions = 2;  // Predict both high and low
-    int batchSize = 32;
-    float learningRate = 0.01f;
-    int numEpochs = 200;
+    int batchSize = 64;
+    float learningRate = 0.001f;
+    int numEpochs = 50;
+    float clipThreshold = 2.0f;
     
     // Define network architecture
     int hiddenLayers = 5;
@@ -92,6 +93,7 @@ void testNeuralNetInitialization() {
              batchSize,
              learningRate,
              numEpochs,
+             clipThreshold,
              targetIndices.data()); // Pass the target indices
 }
 

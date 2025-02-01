@@ -30,7 +30,7 @@ private:
     float* propagateGradientBackward(Layer* currentLayer, const float* dLoss, int batchSize);
     float* computeBiasGradient(Layer* currentLayer, const float* dLoss, int batchSize);
     void clipGradients(Layer* currentLayer, float clipThreshold);
-    void applyGradients(float learningRate, int batchSize);
+    void applyGradients(float learningRate, int batchSize, float clipThreshold);
 
     // Data handling and preprocessing
     void extractBatch(const float* fullData, const std::vector<int>& indices, 
@@ -58,6 +58,7 @@ public:
                int batchSize,
                float learningRate, 
                int numEpochs,
+               float clipThreshold,
                const int* targetIndices);
 
     // Network access methods

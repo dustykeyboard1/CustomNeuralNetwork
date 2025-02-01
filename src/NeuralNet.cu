@@ -89,7 +89,9 @@ void NeuralNet::train(const float* trainingData,
                      int batchSize,
                      float learningRate,
                      int numEpochs,
+                     float clipThreshold,
                      const int* targetIndices) {
+
 
     // Setup training data and variables
     float* standardizedData;
@@ -145,11 +147,11 @@ void NeuralNet::train(const float* trainingData,
                 cudaFree(targets);
             }
             
-            applyGradients(learningRate, batchSize);
+            applyGradients(learningRate, batchSize, clipThreshold);
             epochLoss += loss;
         }
         
-        float avgEpochLoss = epochLoss/float(numBatchesPerEpoch);
+        float avgEpochLoss = epochLoss/(float(numBatchesPerEpoch) * float(batchSize));
         epochLosses.push_back(avgEpochLoss);
         Utils::printProgress(epoch + 1, numEpochs, avgEpochLoss);
     }
@@ -303,7 +305,7 @@ void NeuralNet::backward(const float* predictions, const float* targets, int bat
 }
 
 // Update weights and biases with gradients
-void NeuralNet::applyGradients(float learningRate, int batchSize) {
+void NeuralNet::applyGradients(float learningRate, int batchSize, float clipThreshold) {
     Layer* currentLayer = outputLayer;
     
     while (currentLayer != inputLayer) {
@@ -321,7 +323,7 @@ void NeuralNet::applyGradients(float learningRate, int batchSize) {
                                       currentLayer->getOutputSize(), 
                                       true);
 
-        clipGradients(currentLayer, 5.0f);
+        clipGradients(currentLayer, clipThreshold);
 
         MatrixOps::subtract(currentLayer->getWeights(), 
                       currentLayer->getWeightGradients(), 
