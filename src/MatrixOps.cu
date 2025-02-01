@@ -5,6 +5,18 @@
 #include <iostream>
 
 namespace MatrixOps {
+
+// Basic Matrix Operation Kernels
+__global__ void L2NormKernel(const float* A, float* l2Norm, int rows, int cols) {
+    int row = blockIdx.y * blockDim.y + threadIdx.y;
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int idx = row * cols + col;
+
+    if (row < rows && col < cols) {
+        atomicAdd(&l2Norm[0], A[idx] * A[idx]);
+    } 
+}
+
 __global__ void addKernel(const float* A, const float* B, float* C, int rows, int cols) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -23,6 +35,7 @@ __global__ void subtractKernel(const float* A, const float* B, float* C, int row
     }
 }
 
+// Matrix Arithmetic Kernels
 __global__ void MultiplicationKernel(const float* A, const float* B, float* C, int rowsA, int colsA, int rowsB, int colsB) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -77,6 +90,7 @@ __global__ void ScalerMultiplyKernel(const float* A, float* B, float k, int rows
     }
 }
 
+// Activation Function Kernels
 __global__ void ReluKernel(const float* A, float* B, int rows, int cols) { 
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -109,33 +123,30 @@ __global__ void TanhKernel(const float* A, float* B, int rows, int cols) {
 __global__ void SoftMaxKernel(const float* A, float* B, int rows, int cols) { 
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     if (row < rows) {
-        // Find max for numerical stability
         float max_val = -INFINITY;
         for (int col = 0; col < cols; ++col) {
             max_val = max(max_val, A[row * cols + col]);
         }
         
-        // Compute exp and sum
         float sum = 0.0f;
         for (int col = 0; col < cols; ++col) {
             B[row * cols + col] = expf(A[row * cols + col] - max_val);
             sum += B[row * cols + col];
         }
         
-        // Normalize
         for (int col = 0; col < cols; ++col) {
             B[row * cols + col] /= sum;
         }
     }
 }
 
+// Weight Initialization Kernels
 __global__ void initializeWeightsKernel(float* weights, int rows, int cols, curandState* states, int initTypeCode) {
     int row = blockIdx.y * blockDim.y + threadIdx.y;
     int col = blockIdx.x * blockDim.x + threadIdx.x;
     int idx = row * cols + col;
 
     if (row < rows && col < cols) {
-
         curandState localState = states[idx];
         float n_in = rows;  
         float n_out = cols; 
@@ -162,11 +173,8 @@ __global__ void SumAcrossRowsKernel(const float* input, float* output, int rows,
             sum += input[row * cols + col]; // Accumulate values from each row
         }
         output[col] = sum;
-
     }
 }
-
-
 
 __global__ void initializeCurandStates(curandState* states, unsigned long seed) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
@@ -231,15 +239,14 @@ __global__ void elementWiseMultiplyKernel(const float* A, const float* B, float*
     }
 }
 
+// Public Matrix Operation Functions
 void MatrixOps::add(const float* A, const float* B, float* C, int rows, int cols, bool isGPU) {
     dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
 
     if (isGPU) {
-        // Data already on GPU, just launch kernel
         addKernel<<<blocksPerGrid, threadsPerBlock>>>(A, B, C, rows, cols);
     } else {
-        // Handle CPU to GPU case
         size_t size = rows * cols * sizeof(float);
         float *d_A, *d_B, *d_C;
         
@@ -266,10 +273,8 @@ void subtract(const float* A, const float* B, float* C, int rows, int cols, bool
     dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
 
     if (isGPU) {
-        // Data already on GPU, just launch kernel
         subtractKernel<<<blocksPerGrid, threadsPerBlock>>>(A, B, C, rows, cols);
     } else {
-        // Handle CPU to GPU case
         size_t size = rows * cols * sizeof(float);
         float *d_A, *d_B, *d_C;
         
@@ -298,15 +303,12 @@ void multiply(const float* A, const float* B, float* C, int rowsA, int colsA, in
     }
 
     size_t sizeC = rowsA * colsB * sizeof(float);
-    
     dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((colsB + 15) / 16, (rowsA + 15) / 16);
 
     if (isGPU) {
-        // All pointers are already on GPU, just launch kernel
         MultiplicationKernel<<<blocksPerGrid, threadsPerBlock>>>(A, B, C, rowsA, colsA, rowsB, colsB);
     } else {
-        // Handle CPU to GPU case
         float *d_A, *d_B, *d_C;
         size_t sizeA = rowsA * colsA * sizeof(float);
         size_t sizeB = rowsB * colsB * sizeof(float);
@@ -326,7 +328,6 @@ void multiply(const float* A, const float* B, float* C, int rowsA, int colsA, in
         cudaFree(d_B);
         cudaFree(d_C);
     }
-    
     cudaDeviceSynchronize();
 }
 
@@ -334,8 +335,6 @@ void divide(const float* A, const float* B, float* C, int rows, int cols) {
     size_t sizeA = cols * rows * sizeof(float);
     size_t sizeB = cols * rows * sizeof(float);
     size_t sizeC = rows * cols * sizeof(float);
-
-
 
     float *d_A, *d_B, *d_C;
     cudaMalloc(&d_A, sizeA);
@@ -353,23 +352,19 @@ void divide(const float* A, const float* B, float* C, int rows, int cols) {
 
     cudaMemcpy(C, d_C, sizeC, cudaMemcpyDeviceToHost); 
 
-    //Free memory
     cudaFree(d_A);
     cudaFree(d_B);
     cudaFree(d_C);
-
 }
 
 void MatrixOps::transpose(float* output, const float* input, int rows, int cols, bool isGPU) {
-    dim3 threadsPerBlock(16, 16);  // 2D block for matrix operations
+    dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((cols + threadsPerBlock.x - 1) / threadsPerBlock.x,
                        (rows + threadsPerBlock.y - 1) / threadsPerBlock.y);
 
     if (isGPU) {
-        // Data already on GPU, just launch kernel
         transposeKernel<<<blocksPerGrid, threadsPerBlock>>>(output, input, rows, cols);
     } else {
-        // Handle CPU to GPU case
         float* d_input;
         cudaMalloc(&d_input, rows * cols * sizeof(float));
         cudaMemcpy(d_input, input, rows * cols * sizeof(float), cudaMemcpyHostToDevice);
@@ -378,11 +373,8 @@ void MatrixOps::transpose(float* output, const float* input, int rows, int cols,
         
         cudaFree(d_input);
     }
-    
     cudaDeviceSynchronize();
 }
-
-
 
 void scalerAddition(const float* A, float* B, const float k, int rows, int cols) {
     size_t size = rows * cols * sizeof(float);
@@ -390,7 +382,6 @@ void scalerAddition(const float* A, float* B, const float k, int rows, int cols)
     float *d_A, *d_B;
     cudaMalloc(&d_A, size);
     cudaMalloc(&d_B, size);
-
 
     cudaMemcpy(d_A, A, size, cudaMemcpyHostToDevice);
     cudaMemcpy(d_B, B, size, cudaMemcpyHostToDevice);
@@ -403,7 +394,6 @@ void scalerAddition(const float* A, float* B, const float k, int rows, int cols)
     cudaMemcpy(B, d_B, size, cudaMemcpyDeviceToHost); 
     cudaFree(d_A);
     cudaFree(d_B);
-
 }
 
 void scalerMultiplication(const float* A, float* B, float k, int rows, int cols, bool isGPU) {
@@ -411,10 +401,8 @@ void scalerMultiplication(const float* A, float* B, float k, int rows, int cols,
     dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
 
     if (isGPU) {
-        // Data already on GPU, just launch kernel
         ScalerMultiplyKernel<<<blocksPerGrid, threadsPerBlock>>>(A, B, k, rows, cols);
     } else {
-        // Handle CPU to GPU case
         size_t size = rows * cols * sizeof(float);
         float *d_A, *d_B;
         
@@ -432,15 +420,14 @@ void scalerMultiplication(const float* A, float* B, float k, int rows, int cols,
     }
     cudaDeviceSynchronize();
 }
+
 void Relu(const float* A, float* B, int rows, int cols, bool isGPU) {
     dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
 
     if (isGPU) {
-        // Data already on GPU, just launch kernel
         ReluKernel<<<blocksPerGrid, threadsPerBlock>>>(A, B, rows, cols);
     } else {
-        // Handle CPU to GPU case
         size_t size = rows * cols * sizeof(float);
         float *d_A, *d_B;
         
@@ -456,7 +443,6 @@ void Relu(const float* A, float* B, int rows, int cols, bool isGPU) {
         cudaFree(d_A);
         cudaFree(d_B);
     }
-    
     cudaDeviceSynchronize();
 }
 
@@ -465,10 +451,8 @@ void Sigmoid(const float* A, float* B, int rows, int cols, bool isGPU) {
     dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
 
     if (isGPU) {
-        // Data already on GPU, just launch kernel
         SigmoidKernel<<<blocksPerGrid, threadsPerBlock>>>(A, B, rows, cols);
     } else {
-        // Handle CPU to GPU case
         size_t size = rows * cols * sizeof(float);
         float *d_A, *d_B;
         
@@ -484,7 +468,6 @@ void Sigmoid(const float* A, float* B, int rows, int cols, bool isGPU) {
         cudaFree(d_A);
         cudaFree(d_B);
     }
-    
     cudaDeviceSynchronize();
 }
 
@@ -493,10 +476,8 @@ void Tanh(const float* A, float* B, int rows, int cols, bool isGPU) {
     dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
 
     if (isGPU) {
-        // Data already on GPU, just launch kernel
         TanhKernel<<<blocksPerGrid, threadsPerBlock>>>(A, B, rows, cols);
     } else {
-        // Handle CPU to GPU case
         size_t size = rows * cols * sizeof(float);
         float *d_A, *d_B;
         
@@ -512,7 +493,6 @@ void Tanh(const float* A, float* B, int rows, int cols, bool isGPU) {
         cudaFree(d_A);
         cudaFree(d_B);
     }
-    
     cudaDeviceSynchronize();
 }
 
@@ -521,10 +501,8 @@ void Softmax(const float* A, float* B, int rows, int cols, bool isGPU) {
     dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
 
     if (isGPU) {
-        // Data already on GPU, just launch kernel
         SoftMaxKernel<<<blocksPerGrid, threadsPerBlock>>>(A, B, rows, cols);
     } else {
-        // Handle CPU to GPU case
         size_t size = rows * cols * sizeof(float);
         float *d_A, *d_B;
         
@@ -540,27 +518,19 @@ void Softmax(const float* A, float* B, int rows, int cols, bool isGPU) {
         cudaFree(d_A);
         cudaFree(d_B);
     }
-    
     cudaDeviceSynchronize();
 }
 
 void initializeWeights(float* d_weights, int rows, int cols, const std::string& initType) {
     size_t size = rows * cols * sizeof(float);
-    // float *d_weights;
-
-    // cudaMalloc(&d_weights, size);
-
     cudaMemset(d_weights, 0, size);
 
     dim3 threadsPerBlock(16, 16);
     dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
 
     int initTypeCode = 0; 
-    if (initType == "xavier") {
-        initTypeCode = 1;
-    } else if (initType == "he") {
-        initTypeCode = 2;
-    }
+    if (initType == "xavier") initTypeCode = 1;
+    else if (initType == "he") initTypeCode = 2;
 
     int totalSize = rows * cols;
     curandState* d_states;
@@ -573,62 +543,45 @@ void initializeWeights(float* d_weights, int rows, int cols, const std::string& 
     initializeWeightsKernel<<<blocksPerGrid, threadsPerBlock>>>(d_weights, rows, cols, d_states, initTypeCode);
     cudaDeviceSynchronize();
 
-    // cudaMemcpy(weights, d_weights, size, cudaMemcpyDeviceToHost);
-
-    // Free memory
-    // cudaFree(d_weights);
     cudaFree(d_states);
 }
 
-
 void MatrixOps::addBias(const float* output, const float* bias, float* result, int batchSize, int outputSize, bool isGPU) {
-    size_t totalElements = batchSize * outputSize * sizeof(float);
-    size_t biasSize = outputSize * sizeof(float);
-
     dim3 threadsPerBlock(256);
     dim3 blocksPerGrid((batchSize * outputSize + threadsPerBlock.x - 1) / threadsPerBlock.x);
 
     if (isGPU) {
-        // All pointers are already on GPU, just launch kernel
         AddBiasKernel<<<blocksPerGrid, threadsPerBlock>>>(output, bias, result, batchSize, outputSize);
     } else {
-        // Handle CPU to GPU case
+        size_t totalElements = batchSize * outputSize * sizeof(float);
+        size_t biasSize = outputSize * sizeof(float);
         float *d_output = nullptr, *d_bias = nullptr, *d_result = nullptr;
 
-        // Allocate GPU memory
         cudaMalloc(&d_output, totalElements);
         cudaMalloc(&d_bias, biasSize);
         cudaMalloc(&d_result, totalElements);
 
-        // Copy data to GPU
         cudaMemcpy(d_output, output, totalElements, cudaMemcpyHostToDevice);
         cudaMemcpy(d_bias, bias, biasSize, cudaMemcpyHostToDevice);
 
-        // Launch kernel
         AddBiasKernel<<<blocksPerGrid, threadsPerBlock>>>(d_output, d_bias, d_result, batchSize, outputSize);
 
-        // Copy result back to host
         cudaMemcpy(result, d_result, totalElements, cudaMemcpyDeviceToHost);
 
-        // Free GPU memory
         cudaFree(d_output);
         cudaFree(d_bias);
         cudaFree(d_result);
     }
-    
     cudaDeviceSynchronize();
 }
-
 
 void MatrixOps::sumAcrossRows(const float* input, float* output, int rows, int cols, bool isGPU) {
     dim3 threadsPerBlock(256);
     dim3 blocksPerGrid((cols + threadsPerBlock.x - 1) / threadsPerBlock.x);
 
     if (isGPU) {
-        // Data already on GPU, just launch kernel
         SumAcrossRowsKernel<<<blocksPerGrid, threadsPerBlock>>>(input, output, rows, cols);
     } else {
-        // Handle CPU to GPU case
         size_t inputSize = rows * cols * sizeof(float);
         size_t outputSize = cols * sizeof(float);
         float *d_input, *d_output;
@@ -647,7 +600,6 @@ void MatrixOps::sumAcrossRows(const float* input, float* output, int rows, int c
     }
     cudaDeviceSynchronize();
 }
-
 
 void MatrixOps::reset() {
     cudaError_t err = cudaDeviceReset();
@@ -755,10 +707,8 @@ void MatrixOps::elementWiseMultiply(const float* A, const float* B, float* C, in
     dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
 
     if (isGPU) {
-        // Data already on GPU, just launch kernel
         elementWiseMultiplyKernel<<<blocksPerGrid, threadsPerBlock>>>(A, B, C, rows, cols);
     } else {
-        // Handle CPU to GPU case
         size_t size = rows * cols * sizeof(float);
         float *d_A, *d_B, *d_C;
         
@@ -780,4 +730,30 @@ void MatrixOps::elementWiseMultiply(const float* A, const float* B, float* C, in
     cudaDeviceSynchronize();
 }
 
+float MatrixOps::computeL2Norm(const float* A, int rows, int cols, bool isGPU) {
+    dim3 threadsPerBlock(16, 16);
+    dim3 blocksPerGrid((cols + 15) / 16, (rows + 15) / 16);
+    float* d_l2Norm;
+    cudaMalloc(&d_l2Norm, sizeof(float));
+    cudaMemset(d_l2Norm, 0, sizeof(float));
+
+    if (isGPU) {
+        L2NormKernel<<<blocksPerGrid, threadsPerBlock>>>(A, d_l2Norm, rows, cols);
+    } else {
+        float* d_A;
+        cudaMalloc(&d_A, rows * cols * sizeof(float));
+        cudaMemcpy(d_A, A, rows * cols * sizeof(float), cudaMemcpyHostToDevice);
+        
+        L2NormKernel<<<blocksPerGrid, threadsPerBlock>>>(d_A, d_l2Norm, rows, cols);
+        
+        cudaFree(d_A);
+    }
+    cudaDeviceSynchronize();
+    
+    float l2Norm;
+    cudaMemcpy(&l2Norm, d_l2Norm, sizeof(float), cudaMemcpyDeviceToHost);
+    cudaFree(d_l2Norm);
+
+    return l2Norm;
+}
 }

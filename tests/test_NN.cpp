@@ -69,16 +69,17 @@ void testNeuralNetInitialization() {
     int lookback = 5;  // Use 5 days of history to predict
     int numPredictions = 2;  // Predict both high and low
     int batchSize = 32;
-    float learningRate = 0.0000001f;
-    int numEpochs = 1;
+    float learningRate = 0.01f;
+    int numEpochs = 200;
     
     // Define network architecture
-    int hiddenLayers = 2;
-    int neurons[] = {8, 4};  // Two hidden layers with 8 and 4 neurons
+    int hiddenLayers = 5;
+    int neurons[] = {64, 32, 16, 8, 4};  // Two hidden layers with 8 and 4 neurons
     
     // Initialize network
     net.initialize(lookback * numFeatures, neurons, hiddenLayers, numPredictions);
     
+
     // Define which indices we want to predict (high=1, low=2 in our OHLC order)
     std::vector<int> targetIndices = {1, 2};  // High and Low indices
     
