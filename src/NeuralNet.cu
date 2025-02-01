@@ -475,6 +475,8 @@ float NeuralNet::validate(const float* validationData, int numSamples, int numFe
         cudaFree(targets);
     }
 
+
+
     cudaFreeHost(standardizedData);
     int numValidSamples = numSamples - lookback - 1; 
     return totalLoss / numValidSamples;

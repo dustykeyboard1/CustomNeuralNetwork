@@ -70,13 +70,13 @@ void testNeuralNetInitialization() {
     int numPredictions = 2;  // Predict both high and low
     int batchSize = 64;
     float learningRate = 0.001f;
-    int numEpochs = 50;
-    float clipThreshold = 3.0f;
+    int numEpochs = 10;
+    float clipThreshold = 2.5f;
     float decayRate = std::log(2.0f) / float(numEpochs);
 
     // Define network architecture
-    int hiddenLayers = 5;
-    int neurons[] = {64, 32, 16, 8, 4};  // Two hidden layers with 8 and 4 neurons
+    int hiddenLayers = 6;
+    int neurons[] = {128, 64, 32, 16, 8, 4};  // Two hidden layers with 8 and 4 neurons
     
     // Initialize network
     net.initialize(lookback * numFeatures, neurons, hiddenLayers, numPredictions);
