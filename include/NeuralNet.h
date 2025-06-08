@@ -51,7 +51,7 @@ public:
     ~NeuralNet();
 
     // Network setup and training
-    void NeuralNet::initialize(int inputSize, int* Nuerons, int hiddenLayers, int outputFeatures);   
+    void initialize(int inputSize, int* Nuerons, int hiddenLayers, int outputFeatures);
     void train(const float* trainingData,
                int numDays,
                int lookback,

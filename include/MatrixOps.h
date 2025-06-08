@@ -1,4 +1,4 @@
-#ifndef MARTIX_OPS_H
+#ifndef MATRIX_OPS_H
 #define MATRIX_OPS_H
 #include <string>
 
