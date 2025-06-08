@@ -14,9 +14,7 @@ private:
     Layer* outputLayer; 
     Layer* inputLayer;
 
-    // Data preprocessing
-    std::vector<float> featureMeans;
-    std::vector<float> featureStds;
+
 
     // Forward propagation
     void forward();
@@ -32,13 +30,9 @@ private:
     void clipGradients(Layer* currentLayer, float clipThreshold);
     void applyGradients(float learningRate, int batchSize, float clipThreshold);
 
-    // Data handling and preprocessing
-    void extractBatch(const float* fullData, const std::vector<int>& indices, 
+    // Data handling
+    void extractBatch(const float* fullData, const std::vector<int>& indices,
                      int startIdx, int batchSize, int numFeatures);
-    void standardizeData(const float* rawData, float* standardizedData, 
-                        int numSamples, int numFeatures);
-    void reverseStandardization(const float* standardizedData, float* originalScaleData,
-                              int numSamples, int numFeatures);
 
     // Debug utilities
     void debugPrintGPUArray(const char* name, const float* d_array, int rows, int cols);

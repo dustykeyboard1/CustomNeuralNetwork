@@ -37,48 +37,7 @@ void NeuralNet::initialize(int inputSize, int* Nuerons, int hiddenLayers, int ou
     prevLayer->setNextLayer(outputLayer);
 }
 
-// Data preprocessing functions
-void NeuralNet::standardizeData(const float* rawData, float* standardizedData, 
-                               int numSamples, int numFeatures) {
-    featureMeans.resize(numFeatures, 0.0f);
-    for (int feature = 0; feature < numFeatures; feature++) {
-        float sum = 0.0f;
-        for (int sample = 0; sample < numSamples; sample++) {
-            sum += rawData[sample * numFeatures + feature];
-        }
-        featureMeans[feature] = sum / numSamples;
-    }
-    
-    featureStds.resize(numFeatures, 0.0f);
-    for (int feature = 0; feature < numFeatures; feature++) {
-        float sumSquaredDiff = 0.0f;
-        for (int sample = 0; sample < numSamples; sample++) {
-            float diff = rawData[sample * numFeatures + feature] - featureMeans[feature];
-            sumSquaredDiff += diff * diff;
-        }
-        featureStds[feature] = sqrt(sumSquaredDiff / numSamples);
-        if (featureStds[feature] == 0.0f) featureStds[feature] = 1.0f;
-    }
-    
-    for (int sample = 0; sample < numSamples; sample++) {
-        for (int feature = 0; feature < numFeatures; feature++) {
-            standardizedData[sample * numFeatures + feature] = 
-                (rawData[sample * numFeatures + feature] - featureMeans[feature]) / 
-                featureStds[feature];
-        }
-    }
-}
 
-void NeuralNet::reverseStandardization(const float* standardizedData, float* originalScaleData,
-                                     int numSamples, int numFeatures) {
-    for (int sample = 0; sample < numSamples; sample++) {
-        for (int feature = 0; feature < numFeatures; feature++) {
-            originalScaleData[sample * numFeatures + feature] = 
-                standardizedData[sample * numFeatures + feature] * featureStds[feature] + 
-                featureMeans[feature];
-        }
-    }
-}
 
 // Main training loop
 void NeuralNet::train(const float* trainingData,
@@ -95,10 +54,8 @@ void NeuralNet::train(const float* trainingData,
     // Split the data into training, validation, and test sets
     DataSplit split = Utils::splitDataset(trainingData, numDays, numFeatures);
     
-    // Use split.trainData for training
-    float* standardizedData;
-    cudaMallocHost(&standardizedData, split.trainSize * numFeatures * sizeof(float));
-    standardizeData(split.trainData, standardizedData, split.trainSize, numFeatures);
+    // Training data is assumed to be pre-standardized
+    float* standardizedData = split.trainData;
     
     int outputSize = numPredictions;
     int numPossibleSequences = numDays - lookback - 1;  
@@ -179,7 +136,6 @@ void NeuralNet::train(const float* trainingData,
     Utils::writeLossToFile(validationLosses, "C:/Users/Michael/Coding/C++/CustomNeuralNetwork/LossData/validation_loss.csv");
 
     cudaFree(d_indices);
-    cudaFreeHost(standardizedData);
 
     delete[] split.trainData;
     delete[] split.validData;
@@ -443,9 +399,7 @@ void NeuralNet::setInput(const float* input, int rows, int cols) {
 
 float NeuralNet::validate(const float* validationData, int numSamples, int numFeatures, int lookback, const int* targetIndices, int numPredictions) {
     float totalLoss = 0.0f;
-    float* standardizedData;
-    cudaMallocHost(&standardizedData, numSamples * numFeatures * sizeof(float));
-    standardizeData(validationData, standardizedData, numSamples, numFeatures);
+    const float* standardizedData = validationData;
 
     // Start from lookback to ensure we have enough history
     for (int currentT = lookback; currentT < numSamples - 1; currentT++) {
@@ -477,7 +431,6 @@ float NeuralNet::validate(const float* validationData, int numSamples, int numFe
 
 
 
-    cudaFreeHost(standardizedData);
     int numValidSamples = numSamples - lookback - 1; 
     return totalLoss / numValidSamples;
 }
