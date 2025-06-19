@@ -2,7 +2,8 @@
 #include <cassert>
 #include "MatrixOps.h"
 
-void testAddBias() {
+void testAddBias()
+{
     const int batchSize = 2;
     const int outputSize = 3;
 
@@ -23,7 +24,8 @@ void testAddBias() {
 
     cudaMemcpy(hostResult, d_result, sizeof(hostResult), cudaMemcpyDeviceToHost);
 
-    for (int i = 0; i < batchSize * outputSize; ++i) {
+    for (int i = 0; i < batchSize * outputSize; ++i)
+    {
         assert(fabs(hostResult[i] - expected[i]) < 1e-5);
     }
 
@@ -34,7 +36,8 @@ void testAddBias() {
     cudaFree(d_result);
 }
 
-int main() {
+int main()
+{
     testAddBias();
     return 0;
 }

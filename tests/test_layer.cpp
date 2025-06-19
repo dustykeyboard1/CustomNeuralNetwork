@@ -2,7 +2,8 @@
 #include <iostream>
 #include <cassert>
 
-void testLayerConnections() {
+void testLayerConnections()
+{
     Layer inputLayer(5, 10);
     Layer hiddenLayer(10, 7);
     Layer outputLayer(7, 1);
@@ -19,7 +20,8 @@ void testLayerConnections() {
     std::cout << "Layer connections passed.\n";
 }
 
-int main() {
+int main()
+{
     testLayerConnections();
     std::cout << "Passed All tests" << std::endl;
     return 0;

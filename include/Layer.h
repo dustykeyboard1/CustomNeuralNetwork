@@ -2,8 +2,9 @@
 #define LAYER_H
 #include "MatrixOps.h"
 
-class Layer {
-private:
+class Layer
+{
+   private:
     // Core layer dimensions
     int inputSize;
     int outputSize;
@@ -29,16 +30,17 @@ private:
     // Layer configuration
     std::string activationType;
 
-public:
+   public:
     // Constructor and destructor
-    Layer(int inputSize, int outputSize, const std::string& activationType = "relu", Layer* prevLayer = nullptr);
+    Layer(int inputSize, int outputSize, const std::string& activationType = "relu",
+          Layer* prevLayer = nullptr);
     ~Layer();
 
     // Core layer operations
     void initializeWeights();
     void initialBiases();
     float* forward(const float* input, int batchSize);
-    
+
     // Layer connectivity management
     void setNextLayer(Layer* next);
     void setPrevLayer(Layer* prev);

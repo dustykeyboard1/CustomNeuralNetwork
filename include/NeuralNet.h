@@ -7,14 +7,13 @@
 #include "Layer.h"
 #include <vector>
 
-class NeuralNet {
-private:
+class NeuralNet
+{
+   private:
     // Core network components
     Layer* firstLayer;
-    Layer* outputLayer; 
+    Layer* outputLayer;
     Layer* inputLayer;
-
-
 
     // Forward propagation
     void forward();
@@ -31,32 +30,26 @@ private:
     void applyGradients(float learningRate, int batchSize, float clipThreshold);
 
     // Data handling
-    void extractBatch(const float* fullData, const std::vector<int>& indices,
-                     int startIdx, int batchSize, int numFeatures);
+    void extractBatch(const float* fullData, const std::vector<int>& indices, int startIdx,
+                      int batchSize, int numFeatures);
 
     // Debug utilities
     void debugPrintGPUArray(const char* name, const float* d_array, int rows, int cols);
 
-    float validate(const float* validationData, int numSamples, int numFeatures, int lookback, const int* targetIndices, int numPredictions);
-
-public:
+   public:
     // Constructor/Destructor
     NeuralNet();
     ~NeuralNet();
 
     // Network setup and training
-    void initialize(int inputSize, int* Nuerons, int hiddenLayers, int outputFeatures);
-    void train(const float* trainingData,
-               int numDays,
-               int lookback,
-               int numFeatures,
-               int numPredictions,
-               int batchSize,
-               float learningRate, 
-               int numEpochs,
-               float clipThreshold,
-               float decayRate,
-               const int* targetIndices);
+    void NeuralNet::initialize(int inputSize, const std::vector<int>& neurons, int outputFeatures);
+    std::vector<float> train(const float* trainingData, int numDays, int lookback, int numFeatures,
+                             int numPredictions, int batchSize, float learningRate, int numEpochs,
+                             float clipThreshold, float decayRate, const int* targetIndices,
+                             const float* preloadedTargets, const std::vector<int>& batchIndices);
+
+    float NeuralNet::validate(const float* batchedInputs, const float* batchedTargets,
+                              int numSamples, int numFeatures, int numPredictions, int lookback);
 
     // Network access methods
     void setInput(const float* input, int rows, int cols);

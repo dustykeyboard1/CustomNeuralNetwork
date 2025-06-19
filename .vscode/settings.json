@@ -73,5 +73,9 @@
         "thread": "cpp",
         "xtree": "cpp",
         "complex": "cpp"
-    }
+    },
+    "editor.defaultFormatter": "xaver.clang-format",
+    "editor.formatOnSave": true,
+    "clang-format.executable": "C:\\Program Files\\LLVM\\bin\\clang-format.exe",
+    "clang-format.style": "file"
 }
