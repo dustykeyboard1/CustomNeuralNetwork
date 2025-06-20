@@ -41,24 +41,17 @@ void NeuralNet::initialize(int inputSize, const std::vector<int> &neurons, int o
 }
 
 // Main training loop
-std::vector<float> NeuralNet::train(const float *trainingData, int numDays, int lookback,
-                                    int numFeatures, int numPredictions, int batchSize,
+std::vector<float> NeuralNet::train(const float *inputs,   // flattened input data
+                                    const float *targets,  // flattened target data
+                                    int numSamples, int inputSize, int outputSize, int batchSize,
                                     float learningRate, int numEpochs, float clipThreshold,
-                                    float decayRate, const int *targetIndices,
-                                    const float *preloadedTargets,
-                                    const std::vector<int> &batchIndices)
+                                    float decayRate, const std::vector<int> &batchIndices)
 {
-    const float *standardizedData = trainingData;
-
-    int outputSize = numPredictions;
-    int numPossibleSequences = numDays - lookback - 1;
-    int numBatchesPerEpoch = numPossibleSequences / batchSize;
     float loss;
     float epochLoss;
-
     std::vector<float> epochLosses;
 
-    // Training epochs
+    int numBatchesPerEpoch = numSamples / batchSize;
     float currentLearningRate = learningRate;
 
     for (int epoch = 0; epoch < numEpochs; ++epoch)
@@ -83,23 +76,23 @@ std::vector<float> NeuralNet::train(const float *trainingData, int numDays, int 
                 int currentT = batchIndices[batch * batchSize + i];
 
                 // Get sequence [T-lookback+1, ..., T]
-                cudaMemcpy(inputLayer->getOutput(),
-                           &standardizedData[currentT * numFeatures * lookback],
-                           lookback * numFeatures * sizeof(float), cudaMemcpyHostToDevice);
+                const float *inputSample = &inputs[currentT * inputSize];
+                cudaMemcpy(inputLayer->getOutput(), inputSample, inputSize * sizeof(float),
+                           cudaMemcpyHostToDevice);
 
                 forward();
 
                 // Get targets from T+1, using targetIndices to select specific features
-                const float *targets = preloadedTargets + (batch * batchSize + i) * numPredictions;
+                const float *targetSample = &targets[currentT * outputSize];
 
-                loss += calculateLoss(outputLayer->getOutput(), targets, 1);
-                backward(outputLayer->getOutput(), targets, 1);
+                loss += calculateLoss(outputLayer->getOutput(), targetSample, 1);
+                backward(outputLayer->getOutput(), targetSample, 1);
             }
             applyGradients(currentLearningRate, batchSize, clipThreshold);
             epochLoss += loss;
         }
 
-        currentLearningRate = learningRate * exp(-decayRate * float(epoch));
+        currentLearningRate = learningRate * expf(-decayRate * float(epoch));
 
         float avgEpochLoss = epochLoss / (float(numBatchesPerEpoch) * float(batchSize));
         epochLosses.push_back(avgEpochLoss);
@@ -123,11 +116,10 @@ void NeuralNet::forward()
 
         // Matrix multiplication and bias addition
         MatrixOps::multiply(prevLayer->getOutput(), currentLayer->getWeights(),
-                            currentLayer->getOutput(), prevLayer->getInputSize(),
-                            prevLayer->getOutputSize(), currentLayer->getInputSize(),
-                            currentLayer->getOutputSize(), true);
+                            currentLayer->getOutput(), 1, prevLayer->getOutputSize(),
+                            currentLayer->getInputSize(), currentLayer->getOutputSize(), true);
 
-        MatrixOps::addBias(prevLayer->getOutput(), currentLayer->getBiases(),
+        MatrixOps::addBias(currentLayer->getOutput(), currentLayer->getBiases(),
                            currentLayer->getOutput(), 1, currentLayer->getOutputSize(), true);
 
         // Apply activation function except for output layer
@@ -218,11 +210,11 @@ void NeuralNet::backward(const float *predictions, const float *targets, int bat
             LossOps::computeError(targets, predictions, currentLayer->getDelta(),
                                   currentLayer->getOutputSize(), true);
 
-            cudaMalloc(&aT, currentLayer->getPrevLayer()->getOutputSize() * sizeof(float));
-            cudaMemcpy(aT, currentLayer->getPrevLayer()->getOutput(),
-                       currentLayer->getOutputSize() * sizeof(float), cudaMemcpyDeviceToDevice);
+            cudaMalloc(&aT, prevLayer->getOutputSize() * sizeof(float));
+            cudaMemcpy(aT, prevLayer->getOutput(), prevLayer->getOutputSize() * sizeof(float),
+                       cudaMemcpyDeviceToDevice);
 
-            MatrixOps::transpose(aT, aT, 1, currentLayer->getPrevLayer()->getOutputSize(), true);
+            MatrixOps::transpose(aT, aT, 1, prevLayer->getOutputSize(), true);
 
             cudaMalloc(&dlossW, currentLayer->getInputSize() * currentLayer->getOutputSize() *
                                     sizeof(float));
@@ -230,12 +222,11 @@ void NeuralNet::backward(const float *predictions, const float *targets, int bat
                 dlossW, 0,
                 currentLayer->getInputSize() * currentLayer->getOutputSize() * sizeof(float));
 
-            MatrixOps::multiply(aT, currentLayer->getDelta(), dlossW,
-                                currentLayer->getPrevLayer()->getOutputSize(), 1, 1,
-                                currentLayer->getOutputSize(), true);
-            MatrixOps::add(
-                currentLayer->getWeightGradients(), dlossW, currentLayer->getWeightGradients(),
-                currentLayer->getPrevLayer()->getInputSize(), currentLayer->getOutputSize(), true);
+            MatrixOps::multiply(aT, currentLayer->getDelta(), dlossW, prevLayer->getOutputSize(), 1,
+                                1, currentLayer->getOutputSize(), true);
+            MatrixOps::add(currentLayer->getWeightGradients(), dlossW,
+                           currentLayer->getWeightGradients(), prevLayer->getInputSize(),
+                           currentLayer->getOutputSize(), true);
 
             MatrixOps::add(currentLayer->getBiasGradients(), currentLayer->getDelta(),
                            currentLayer->getBiasGradients(), 1, currentLayer->getOutputSize(),
@@ -248,41 +239,36 @@ void NeuralNet::backward(const float *predictions, const float *targets, int bat
         }
         else
         {
-            cudaMalloc(&wT, currentLayer->getNextLayer()->getInputSize() *
-                                currentLayer->getNextLayer()->getOutputSize() * sizeof(float));
-            cudaMemcpy(wT, currentLayer->getNextLayer()->getWeights(),
-                       currentLayer->getNextLayer()->getInputSize() *
-                           currentLayer->getNextLayer()->getOutputSize() * sizeof(float),
+            Layer *nextLayer = currentLayer->getNextLayer();
+            cudaMalloc(&wT, nextLayer->getInputSize() * nextLayer->getOutputSize() * sizeof(float));
+            cudaMemcpy(wT, nextLayer->getWeights(),
+                       nextLayer->getInputSize() * nextLayer->getOutputSize() * sizeof(float),
                        cudaMemcpyDeviceToDevice);
-            MatrixOps::transpose(wT, wT, currentLayer->getNextLayer()->getInputSize(),
-                                 currentLayer->getNextLayer()->getOutputSize(), true);
+            MatrixOps::transpose(wT, wT, nextLayer->getInputSize(), nextLayer->getOutputSize(),
+                                 true);
 
-            MatrixOps::multiply(currentLayer->getNextLayer()->getDelta(), wT,
-                                currentLayer->getDelta(), 1,
-                                currentLayer->getNextLayer()->getOutputSize(),
-                                currentLayer->getNextLayer()->getOutputSize(),
-                                currentLayer->getNextLayer()->getInputSize(), true);
+            MatrixOps::multiply(nextLayer->getDelta(), wT, currentLayer->getDelta(), 1,
+                                nextLayer->getOutputSize(), nextLayer->getOutputSize(),
+                                nextLayer->getInputSize(), true);
 
             applyAntiActivation(currentLayer);
 
             MatrixOps::elementWiseMultiply(currentLayer->getPreActivation(),
                                            currentLayer->getDelta(), currentLayer->getDelta(), 1,
-                                           currentLayer->getNextLayer()->getInputSize(), true);
+                                           nextLayer->getInputSize(), true);
 
-            cudaMalloc(&aT, currentLayer->getPrevLayer()->getOutputSize() * sizeof(float));
-            cudaMemcpy(aT, currentLayer->getPrevLayer()->getOutput(),
-                       currentLayer->getPrevLayer()->getOutputSize() * sizeof(float),
+            cudaMalloc(&aT, prevLayer->getOutputSize() * sizeof(float));
+            cudaMemcpy(aT, prevLayer->getOutput(), prevLayer->getOutputSize() * sizeof(float),
                        cudaMemcpyDeviceToDevice);
-            MatrixOps::transpose(aT, aT, 1, currentLayer->getPrevLayer()->getOutputSize(), true);
+            MatrixOps::transpose(aT, aT, 1, prevLayer->getOutputSize(), true);
 
             cudaMalloc(&dlossW, currentLayer->getInputSize() * currentLayer->getOutputSize() *
                                     sizeof(float));
             cudaMemset(
                 dlossW, 0,
                 currentLayer->getInputSize() * currentLayer->getOutputSize() * sizeof(float));
-            MatrixOps::multiply(aT, currentLayer->getDelta(), dlossW,
-                                currentLayer->getPrevLayer()->getOutputSize(), 1, 1,
-                                currentLayer->getOutputSize(), true);
+            MatrixOps::multiply(aT, currentLayer->getDelta(), dlossW, prevLayer->getOutputSize(), 1,
+                                1, currentLayer->getOutputSize(), true);
 
             MatrixOps::add(currentLayer->getWeightGradients(), dlossW,
                            currentLayer->getWeightGradients(), currentLayer->getInputSize(),

@@ -76,7 +76,7 @@ void testTranspose()
     float A[6] = {1, 2, 3, 4, 5, 6};
     float B[6] = {0};
 
-    MatrixOps::transpose(A, B, rows, cols, true);
+    MatrixOps::transpose(B, A, rows, cols, false);
 
     float expected[6] = {1, 4, 2, 5, 3, 6};
     for (int i = 0; i < rows * cols; ++i)

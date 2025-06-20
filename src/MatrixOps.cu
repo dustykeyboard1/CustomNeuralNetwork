@@ -446,12 +446,20 @@ void MatrixOps::transpose(float* output, const float* input, int rows, int cols,
     else
     {
         float* d_input;
-        cudaMalloc(&d_input, rows * cols * sizeof(float));
+        float* d_output;
+        size_t size = rows * cols * sizeof(float);
+
+        cudaMalloc(&d_output, size);
+
+        cudaMalloc(&d_input, size);
         cudaMemcpy(d_input, input, rows * cols * sizeof(float), cudaMemcpyHostToDevice);
 
-        transposeKernel<<<blocksPerGrid, threadsPerBlock>>>(output, d_input, rows, cols);
+        transposeKernel<<<blocksPerGrid, threadsPerBlock>>>(d_output, d_input, rows, cols);
+
+        cudaMemcpy(output, d_output, size, cudaMemcpyDeviceToHost);
 
         cudaFree(d_input);
+        cudaFree(d_output);
     }
     cudaDeviceSynchronize();
 }

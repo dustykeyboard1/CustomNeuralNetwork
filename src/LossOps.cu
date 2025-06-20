@@ -90,6 +90,7 @@ float LossOps::MeanSquaredError(const float* targets, const float* predictions, 
     {
         // Use GPU data directly
         cudaMalloc(&d_loss, size * sizeof(float));
+        cudaMemset(d_loss, 0, sizeof(float));
 
         int blockSize = 256;
         int numBlocks = (size + blockSize - 1) / blockSize;
@@ -101,6 +102,7 @@ float LossOps::MeanSquaredError(const float* targets, const float* predictions, 
         cudaMalloc(&d_targets, size * sizeof(float));
         cudaMalloc(&d_predictions, size * sizeof(float));
         cudaMalloc(&d_loss, size * sizeof(float));
+        cudaMemset(d_loss, 0, sizeof(float));
 
         cudaMemcpy(d_targets, targets, size * sizeof(float), cudaMemcpyHostToDevice);
         cudaMemcpy(d_predictions, predictions, size * sizeof(float), cudaMemcpyHostToDevice);
@@ -113,7 +115,8 @@ float LossOps::MeanSquaredError(const float* targets, const float* predictions, 
     // Get final loss value
     float totalLoss;
     cudaMemcpy(&totalLoss, d_loss, sizeof(float), cudaMemcpyDeviceToHost);
-
+    totalLoss /= size;
+    
     // Cleanup GPU memory
     if (!isGPU)
     {
@@ -121,6 +124,7 @@ float LossOps::MeanSquaredError(const float* targets, const float* predictions, 
         cudaFree(d_predictions);
     }
     cudaFree(d_loss);
+
     return totalLoss;
 }
 

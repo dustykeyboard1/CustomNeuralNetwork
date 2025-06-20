@@ -37,3 +37,4 @@ LossData/
 scripts/
 
 .cursor/
+pybind11/

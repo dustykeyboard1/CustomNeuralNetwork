@@ -90,8 +90,7 @@ C:/Program Files/CMake/share/cmake-3.31/Modules/Compiler/XLClang-CXX-DetermineCo
 C:/Program Files/CMake/share/cmake-3.31/Modules/Compiler/zOS-C-DetermineCompiler.cmake
 C:/Program Files/CMake/share/cmake-3.31/Modules/Compiler/zOS-CXX-DetermineCompiler.cmake
 C:/Program Files/CMake/share/cmake-3.31/Modules/CompilerId/VS-10.vcxproj.in
-C:/Program Files/CMake/share/cmake-3.31/Modules/FindCUDA.cmake
-C:/Program Files/CMake/share/cmake-3.31/Modules/FindCUDA/select_compute_arch.cmake
+C:/Program Files/CMake/share/cmake-3.31/Modules/FindCUDAToolkit.cmake
 C:/Program Files/CMake/share/cmake-3.31/Modules/FindPackageHandleStandardArgs.cmake
 C:/Program Files/CMake/share/cmake-3.31/Modules/FindPackageMessage.cmake
 C:/Program Files/CMake/share/cmake-3.31/Modules/Internal/CMakeCUDAArchitecturesAll.cmake

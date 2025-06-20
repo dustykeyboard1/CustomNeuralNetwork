@@ -1,3 +1,9 @@
+C:/Users/Michael/Coding/C++/CustomNeuralNetwork/build/CMakeFiles/neuralnet.dir
+C:/Users/Michael/Coding/C++/CustomNeuralNetwork/build/CMakeFiles/MatrixOpsTests.dir
+C:/Users/Michael/Coding/C++/CustomNeuralNetwork/build/CMakeFiles/LossFunctionTests.dir
+C:/Users/Michael/Coding/C++/CustomNeuralNetwork/build/CMakeFiles/CudaTest.dir
+C:/Users/Michael/Coding/C++/CustomNeuralNetwork/build/CMakeFiles/LayerTest.dir
 C:/Users/Michael/Coding/C++/CustomNeuralNetwork/build/CMakeFiles/NeuralNetTests.dir
 C:/Users/Michael/Coding/C++/CustomNeuralNetwork/build/CMakeFiles/ALL_BUILD.dir
 C:/Users/Michael/Coding/C++/CustomNeuralNetwork/build/CMakeFiles/ZERO_CHECK.dir
+C:/Users/Michael/Coding/C++/CustomNeuralNetwork/build/pybind11/CMakeFiles/ALL_BUILD.dir

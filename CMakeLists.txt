@@ -1,71 +1,61 @@
-cmake_minimum_required(VERSION 3.10)
-
-# Project name and languages
+cmake_minimum_required(VERSION 3.18)
 project(CustomNeuralNetwork LANGUAGES CXX CUDA)
 
-# Set C++ standard
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED True)
+# Force CMake to use nvcc directly, avoid MSVC CUDA toolset detection
+find_package(CUDAToolkit REQUIRED)
 
-# Specify CUDA architectures
+
+# C++ and CUDA standards
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CUDA_STANDARD 17)
+
+# CUDA architecture (adjust for your GPU if needed)
 set(CMAKE_CUDA_ARCHITECTURES 89)
 
-# Include directories
-include_directories(${PROJECT_SOURCE_DIR}/include)
+# Add pybind11 as a subdirectory
+add_subdirectory(pybind11)
 
-# Source files
-set(SOURCES
-    src/main.cpp
-    src/NeuralNet.cpp
-    src/Utils.cpp
+# Source files for the pybind11 module
+set(NN_SOURCES
+    src/NeuralNet.cu
+    src/Layer.cu
+    src/LossOps.cu
     src/MatrixOps.cu
+    src/Utils.cpp
+    bindings/bindings.cpp
 )
 
-# Add executable target
-# add_executable(CustomNeuralNetwork ${SOURCES})
+# Build the pybind11 module
+pybind11_add_module(neuralnet ${NN_SOURCES})
+target_link_libraries(neuralnet PRIVATE CUDA::cudart_static)
 
-# add_executable(MatrixOpsTests tests/test_MatrixOps.cpp src/MatrixOps.cu)
-# target_link_libraries(MatrixOpsTests ${CUDA_LIBRARIES})
+# Test binaries (optional, but good for modular build)
+add_executable(MatrixOpsTests tests/test_MatrixOps.cpp src/MatrixOps.cu)
+target_link_libraries(MatrixOpsTests PRIVATE CUDA::cudart_static)
 
-# add_executable(LossFunctionTests tests/test_LossFuncs.cpp src/LossOps.cu)
-# target_link_libraries(LossFunctionTests ${CUDA_LIBRARIES})
+add_executable(LossFunctionTests tests/test_LossFuncs.cpp src/LossOps.cu)
+target_link_libraries(LossFunctionTests PRIVATE CUDA::cudart_static)
 
-# add_executable(CudaTest tests/cuda_tests.cu src/MatrixOps.cu)
-# target_link_libraries(CudaTest ${CUDA_LIBRARIES})
+add_executable(CudaTest tests/cuda_tests.cu src/MatrixOps.cu)
+target_link_libraries(CudaTest PRIVATE CUDA::cudart_static)
 
-# add_executable(LayerTest tests/test_layer.cpp src/Layer.cu src/MatrixOps.cu)
-# target_link_libraries(LayerTest ${CUDA_LIBRARIES})
+add_executable(LayerTest tests/test_layer.cpp src/Layer.cu src/MatrixOps.cu)
+target_link_libraries(LayerTest PRIVATE CUDA::cudart_static)
 
-find_package(CUDA REQUIRED)
-include_directories(${CUDA_INCLUDE_DIRS})
-
-add_executable(NeuralNetTests 
-    tests/test_NN.cpp 
-    src/NeuralNet.cu 
-    src/Layer.cu 
-    src/MatrixOps.cu 
+add_executable(NeuralNetTests
+    tests/test_NN.cpp
+    src/NeuralNet.cu
+    src/Layer.cu
+    src/MatrixOps.cu
     src/LossOps.cu
     src/Utils.cpp)
+
 set_target_properties(NeuralNetTests PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
 )
-target_link_libraries(NeuralNetTests ${CUDA_LIBRARIES})
+target_link_libraries(NeuralNetTests PRIVATE CUDA::cudart_static)
 
-# Add CUDA compilation flags
+# Debug CUDA settings
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-G;-g)
+    set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -G -g")
 endif()
-
-# Ensure consistent runtime libraries
-if(MSVC)
-    # Debug configuration
-    set(CMAKE_CXX_FLAGS_DEBUG "/MDd")
-    set(CMAKE_CUDA_FLAGS_DEBUG "--compiler-options /MDd")
-
-    # Release configuration
-    set(CMAKE_CXX_FLAGS_RELEASE "/MD")
-    set(CMAKE_CUDA_FLAGS_RELEASE "--compiler-options /MD")
-endif()
-
-# Ensure runtime library settings for MSVC
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")

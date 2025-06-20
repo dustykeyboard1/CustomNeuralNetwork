@@ -43,10 +43,11 @@ class NeuralNet
 
     // Network setup and training
     void NeuralNet::initialize(int inputSize, const std::vector<int>& neurons, int outputFeatures);
-    std::vector<float> train(const float* trainingData, int numDays, int lookback, int numFeatures,
-                             int numPredictions, int batchSize, float learningRate, int numEpochs,
-                             float clipThreshold, float decayRate, const int* targetIndices,
-                             const float* preloadedTargets, const std::vector<int>& batchIndices);
+    std::vector<float> train(const float* inputs,   // flattened input data
+                             const float* targets,  // flattened target data
+                             int numSamples, int inputSize, int outputSize, int batchSize,
+                             float learningRate, int numEpochs, float clipThreshold,
+                             float decayRate, const std::vector<int>& batchIndices);
 
     float NeuralNet::validate(const float* batchedInputs, const float* batchedTargets,
                               int numSamples, int numFeatures, int numPredictions, int lookback);
