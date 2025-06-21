@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.18)
 project(CustomNeuralNetwork LANGUAGES CXX CUDA)
+include_directories(${CMAKE_SOURCE_DIR}/include)
 
 # Force CMake to use nvcc directly, avoid MSVC CUDA toolset detection
 find_package(CUDAToolkit REQUIRED)

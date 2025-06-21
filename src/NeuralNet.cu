@@ -51,6 +51,15 @@ std::vector<float> NeuralNet::train(const float *inputs,   // flattened input da
     float epochLoss;
     std::vector<float> epochLosses;
 
+    ////////////////
+    // std::cout << "First few input values:" << std::endl;
+    // for (int i = 0; i < std::min(30, numSamples * outputSize); ++i)
+    // {
+    //     std::cout << targets[i] << " ";
+    // }
+    // std::cout << std::endl;
+    ////////////////
+
     int numBatchesPerEpoch = numSamples / batchSize;
     float currentLearningRate = learningRate;
 
@@ -71,6 +80,11 @@ std::vector<float> NeuralNet::train(const float *inputs,   // flattened input da
 
             // Process each sample in batch
             loss = 0.0f;
+            if (std::isnan(loss) || std::isinf(loss))
+            {
+                std::cerr << "Numerical instability detected at epoch " << epoch << std::endl;
+            }
+
             for (int i = 0; i < batchSize; i++)
             {
                 int currentT = batchIndices[batch * batchSize + i];
@@ -84,10 +98,12 @@ std::vector<float> NeuralNet::train(const float *inputs,   // flattened input da
 
                 // Get targets from T+1, using targetIndices to select specific features
                 const float *targetSample = &targets[currentT * outputSize];
+                std::cout << "Pre Loss: " << loss << std::endl;
 
                 loss += calculateLoss(outputLayer->getOutput(), targetSample, 1);
                 backward(outputLayer->getOutput(), targetSample, 1);
             }
+            std::cout << "Loss: " << loss << std::endl;
             applyGradients(currentLearningRate, batchSize, clipThreshold);
             epochLoss += loss;
         }
