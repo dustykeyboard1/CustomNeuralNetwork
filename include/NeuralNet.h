@@ -35,6 +35,8 @@ class NeuralNet
 
     // Debug utilities
     void debugPrintGPUArray(const char* name, const float* d_array, int rows, int cols);
+    void printWeights() const;
+    void printAllBiases() const;
 
    public:
     // Constructor/Destructor

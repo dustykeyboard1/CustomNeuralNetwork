@@ -51,14 +51,13 @@ std::vector<float> NeuralNet::train(const float *inputs,   // flattened input da
     float epochLoss;
     std::vector<float> epochLosses;
 
-    ////////////////
-    // std::cout << "First few input values:" << std::endl;
-    // for (int i = 0; i < std::min(30, numSamples * outputSize); ++i)
-    // {
-    //     std::cout << targets[i] << " ";
-    // }
-    // std::cout << std::endl;
-    ////////////////
+    float *d_targets;
+    cudaMalloc(&d_targets, numSamples * outputSize * sizeof(float));
+    cudaMemcpy(d_targets, targets, numSamples * outputSize * sizeof(float), cudaMemcpyHostToDevice);
+    float *d_inputs;
+    cudaMalloc(&d_inputs, numSamples * inputSize * sizeof(float));
+    cudaMemcpy(d_inputs, inputs, numSamples * inputSize * sizeof(float), cudaMemcpyHostToDevice);
+
 
     int numBatchesPerEpoch = numSamples / batchSize;
     float currentLearningRate = learningRate;
@@ -80,30 +79,35 @@ std::vector<float> NeuralNet::train(const float *inputs,   // flattened input da
 
             // Process each sample in batch
             loss = 0.0f;
-            if (std::isnan(loss) || std::isinf(loss))
-            {
-                std::cerr << "Numerical instability detected at epoch " << epoch << std::endl;
-            }
 
             for (int i = 0; i < batchSize; i++)
             {
                 int currentT = batchIndices[batch * batchSize + i];
 
                 // Get sequence [T-lookback+1, ..., T]
-                const float *inputSample = &inputs[currentT * inputSize];
-                cudaMemcpy(inputLayer->getOutput(), inputSample, inputSize * sizeof(float),
-                           cudaMemcpyHostToDevice);
+                const float *inputSample = &d_inputs[currentT * inputSize];
+
+
+
+                float *dst = inputLayer->getOutput();
+                cudaError_t err =
+                    cudaMemcpy(dst, inputSample, inputSize * sizeof(float), cudaMemcpyDeviceToDevice);
+                if (err != cudaSuccess)
+                {
+                    std::cerr << "cudaMemcpy failed for inputLayer: " << cudaGetErrorString(err)
+                              << std::endl;
+                    exit(1);  // Early exit to stop bad memory propagation
+                }
 
                 forward();
 
+
                 // Get targets from T+1, using targetIndices to select specific features
-                const float *targetSample = &targets[currentT * outputSize];
-                std::cout << "Pre Loss: " << loss << std::endl;
+                const float *targetSample = &d_targets[currentT * outputSize];
 
                 loss += calculateLoss(outputLayer->getOutput(), targetSample, 1);
                 backward(outputLayer->getOutput(), targetSample, 1);
             }
-            std::cout << "Loss: " << loss << std::endl;
             applyGradients(currentLearningRate, batchSize, clipThreshold);
             epochLoss += loss;
         }
@@ -114,13 +118,15 @@ std::vector<float> NeuralNet::train(const float *inputs,   // flattened input da
         epochLosses.push_back(avgEpochLoss);
         Utils::printProgress(epoch + 1, numEpochs, avgEpochLoss);
     }
-
+    cudaFree(d_targets);
+    cudaFree(d_inputs);
     return epochLosses;
 }
 
 // Forward pass through network
 void NeuralNet::forward()
 {
+
     Layer *currentLayer = inputLayer->getNextLayer();
     int layerIndex = 0;
     Layer *prevLayer = nullptr;
@@ -135,8 +141,11 @@ void NeuralNet::forward()
                             currentLayer->getOutput(), 1, prevLayer->getOutputSize(),
                             currentLayer->getInputSize(), currentLayer->getOutputSize(), true);
 
+
         MatrixOps::addBias(currentLayer->getOutput(), currentLayer->getBiases(),
                            currentLayer->getOutput(), 1, currentLayer->getOutputSize(), true);
+
+
 
         // Apply activation function except for output layer
         if (currentLayer->getNextLayer() != nullptr)
@@ -436,4 +445,62 @@ float NeuralNet::validate(const float *batchedInputs, const float *batchedTarget
     }
 
     return totalLoss / static_cast<float>(numSamples);
+}
+
+void NeuralNet::printWeights() const
+{
+    Layer *layer = inputLayer->getNextLayer();
+    int layerIdx = 0;
+
+    while (layer != nullptr)
+    {
+        int inSize = layer->getInputSize();
+        int outSize = layer->getOutputSize();
+        int numWeights = inSize * outSize;
+
+        float *hostWeights = new float[numWeights];
+        cudaMemcpy(hostWeights, layer->getWeights(), numWeights * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        std::cout << "Layer " << layerIdx << " Weights (" << inSize << "x" << outSize
+                  << "):" << std::endl;
+        for (int i = 0; i < outSize; ++i)
+        {
+            for (int j = 0; j < inSize; ++j)
+            {
+                std::cout << hostWeights[i * inSize + j] << " ";
+            }
+            std::cout << std::endl;
+        }
+        std::cout << std::endl;
+
+        delete[] hostWeights;
+        layer = layer->getNextLayer();
+        layerIdx++;
+    }
+}
+
+void NeuralNet::printAllBiases() const
+{
+    Layer *current = inputLayer->getNextLayer();
+    int layerNum = 0;
+
+    while (current != nullptr)
+    {
+        int size = current->getOutputSize();
+        std::vector<float> hostBiases(size);
+
+        cudaMemcpy(hostBiases.data(), current->getBiases(), size * sizeof(float),
+                   cudaMemcpyDeviceToHost);
+
+        std::cout << "Layer " << layerNum << " Biases (" << size << "): ";
+        for (float val : hostBiases)
+        {
+            std::cout << val << " ";
+        }
+        std::cout << std::endl;
+
+        current = current->getNextLayer();
+        layerNum++;
+    }
 }
